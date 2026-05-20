@@ -1,0 +1,33 @@
+APP NAME:
+AutoShare
+
+SHORT DESCRIPTION (<=80):
+Fast local Wi-Fi file sharing with secure pairing and built-in file manager.
+Length: 76
+
+FULL DESCRIPTION:
+AutoShare is a local network file sharing app built for fast, private transfers between nearby devices.
+
+Why AutoShare:
+• Share files directly over local Wi-Fi
+• No cloud upload needed
+• Pair trusted devices for safer transfers
+• Open APK files with Android native installer
+• Manage received files with built-in file manager
+
+What you can do:
+• Discover nearby devices automatically
+• Send photos, videos, documents, and app files
+• Accept or reject pairing requests
+• Move, organize, and browse folders in one place
+• Track transfer progress with notifications
+
+Privacy first:
+AutoShare is designed for local sharing. Your files stay on your devices and move only between devices you connect.
+
+Best for:
+• Phone-to-phone transfer
+• Phone-to-PC local sharing
+• Quick offline file exchange at home, office, or hotspot
+
+Use AutoShare when you want simple, fast, and private file transfer without cloud friction.

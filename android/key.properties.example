@@ -1,0 +1,4 @@
+storePassword=autoshare
+keyPassword=autoshare
+keyAlias=upload
+storeFile=C:\\path\\to\\upload-keystore.jks

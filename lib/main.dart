@@ -1,0 +1,178 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/file_manager_screen.dart';
+import 'services/discovery_service.dart';
+import 'services/notification_service.dart';
+import 'services/storage_service.dart';
+import 'services/transfer_service.dart';
+
+// Global key for navigating from outside widget contexts (e.g. notification clicks)
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize storage first
+  final storageService = StorageService();
+  await storageService.init();
+
+  // Initialize notifications
+  final notificationService = NotificationService();
+  await notificationService.init();
+
+  // Initialize network services
+  final discoveryService = DiscoveryService(storageService);
+  final transferService = TransferService(storageService);
+
+  runApp(
+    AutoShareApp(
+      storageService: storageService,
+      discoveryService: discoveryService,
+      transferService: transferService,
+      notificationService: notificationService,
+    ),
+  );
+}
+
+class AutoShareApp extends StatefulWidget {
+  final StorageService storageService;
+  final DiscoveryService discoveryService;
+  final TransferService transferService;
+  final NotificationService notificationService;
+
+  const AutoShareApp({
+    super.key,
+    required this.storageService,
+    required this.discoveryService,
+    required this.transferService,
+    required this.notificationService,
+  });
+
+  @override
+  State<AutoShareApp> createState() => _AutoShareAppState();
+}
+
+class _AutoShareAppState extends State<AutoShareApp> {
+  late StreamSubscription<String?> _notificationSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestPermissions();
+
+    // Listen to notification clicks to open custom file manager
+    _notificationSubscription = widget.notificationService.onNotificationTapped
+        .listen((filePath) {
+          if (filePath != null && filePath.isNotEmpty) {
+            _navigateToFileManager(filePath);
+          }
+        });
+  }
+
+  Future<void> _requestPermissions() async {
+    if (Platform.isAndroid) {
+      // Request notifications permission (Android 13+)
+      if (await Permission.notification.status.isDenied) {
+        await Permission.notification.request();
+      }
+
+      // File manager requires broad storage access on Android 11+
+      final allFilesStatus = await Permission.manageExternalStorage.status;
+      if (!allFilesStatus.isGranted) {
+        await Permission.manageExternalStorage.request();
+      }
+
+      await widget.storageService.refreshRootDirectory();
+    }
+  }
+
+  void _navigateToFileManager(String filePath) {
+    // Navigate to the file manager, passing the file path to highlight it
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (context) => FileManagerScreen(
+          storageService: widget.storageService,
+          highlightFilePath: filePath,
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Vibrant Color Palettes
+    final colorSchemeLight = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF6200EE),
+      brightness: Brightness.light,
+      primary: const Color(0xFF6200EE),
+      secondary: const Color(0xFF03DAC6),
+    );
+
+    final colorSchemeDark = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFBB86FC),
+      brightness: Brightness.dark,
+      primary: const Color(0xFFBB86FC),
+      secondary: const Color(0xFF03DAC6),
+      surface: const Color(0xFF121212),
+    );
+
+    return MaterialApp(
+      title: 'AutoShare',
+      navigatorKey: navigatorKey,
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system, // Supports OS setting
+      // Light Theme
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: colorSchemeLight,
+        scaffoldBackgroundColor: const Color(0xFFF9F9FB),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 2,
+          shadowColor: Colors.black12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+
+      // Dark Theme (Premium)
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: colorSchemeDark,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+        cardTheme: CardThemeData(
+          elevation: 4,
+          shadowColor: Colors.black26,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+
+      home: DashboardScreen(
+        storageService: widget.storageService,
+        discoveryService: widget.discoveryService,
+        transferService: widget.transferService,
+      ),
+    );
+  }
+}
