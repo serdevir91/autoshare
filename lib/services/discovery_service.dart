@@ -12,6 +12,7 @@ class DiscoveryService extends ChangeNotifier {
   RawDatagramSocket? _socket;
   Timer? _broadcastTimer;
   Timer? _cleanupTimer;
+  Timer? _pingTimer;
   
   final Map<String, DeviceNode> _activeDevices = {};
   bool _isScanning = false;
@@ -85,6 +86,10 @@ class DiscoveryService extends ChangeNotifier {
       _broadcastTimer = Timer.periodic(const Duration(seconds: 3), (_) => broadcastPresence());
       // Start cleaning up offline devices
       _cleanupTimer = Timer.periodic(const Duration(seconds: 5), (_) => _cleanupOfflineDevices());
+      // Start TCP ping for paired devices (Windows only fallback)
+      if (Platform.isWindows) {
+        _pingTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pingPairedDevices());
+      }
 
       // Send initial presence broadcast immediately
       await broadcastPresence();
@@ -174,12 +179,94 @@ class DiscoveryService extends ChangeNotifier {
     }
   }
 
+  Future<void> _pingPairedDevices() async {
+    if (!Platform.isWindows) return;
+
+    final paired = _storageService.getPairedDevices();
+    if (paired.isEmpty) return;
+
+    final client = HttpClient();
+    client.connectionTimeout = const Duration(milliseconds: 1500);
+
+    // Get current local IP to check gateway
+    final localIp = await getLocalIp();
+    String? gatewayIp;
+    if (localIp != null) {
+      final parts = localIp.split('.');
+      if (parts.length == 4) {
+        gatewayIp = '${parts[0]}.${parts[1]}.${parts[2]}.1';
+      }
+    }
+
+    // Set of IPs we want to ping
+    final ipsToPing = <String>{};
+    for (final peer in paired) {
+      if (peer.ip.isNotEmpty) {
+        ipsToPing.add(peer.ip);
+      }
+    }
+    if (gatewayIp != null) {
+      ipsToPing.add(gatewayIp);
+    }
+
+    final pingFutures = ipsToPing.map((ip) async {
+      try {
+        final port = 53843; // Default port
+        final uri = Uri.parse('http://$ip:$port/api/status');
+        final request = await client.getUrl(uri);
+        final response = await request.close();
+
+        if (response.statusCode == HttpStatus.ok) {
+          final body = await response.transform(utf8.decoder).join();
+          final json = jsonDecode(body) as Map<String, dynamic>;
+          final id = json['id'] as String;
+          final name = json['name'] as String;
+          final type = json['type'] as String? ?? 'mobile';
+
+          DeviceNode? matchingPeer;
+          try {
+            matchingPeer = paired.firstWhere((p) => p.id == id);
+          } catch (_) {
+            matchingPeer = null;
+          }
+
+          if (matchingPeer != null) {
+            final updatedDevice = DeviceNode(
+              id: id,
+              name: name,
+              ip: ip,
+              port: port,
+              type: type,
+              lastSeen: DateTime.now(),
+            );
+
+            _activeDevices[id] = updatedDevice;
+
+            // If the stored IP or name/type is different, update in SharedPreferences
+            if (matchingPeer.ip != ip || matchingPeer.name != name || matchingPeer.type != type) {
+              final newPairedNode = matchingPeer.copyWith(ip: ip, name: name, type: type);
+              await _storageService.addPairedDevice(newPairedNode);
+            }
+          }
+        }
+      } catch (_) {
+        // Ping failed, ignore
+      }
+    });
+
+    await Future.wait(pingFutures);
+    notifyListeners();
+    client.close();
+  }
+
   void stop() {
     _isScanning = false;
     _broadcastTimer?.cancel();
     _broadcastTimer = null;
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
+    _pingTimer?.cancel();
+    _pingTimer = null;
     _socket?.close();
     _socket = null;
     _activeDevices.clear();
