@@ -86,10 +86,8 @@ class DiscoveryService extends ChangeNotifier {
       _broadcastTimer = Timer.periodic(const Duration(seconds: 3), (_) => broadcastPresence());
       // Start cleaning up offline devices
       _cleanupTimer = Timer.periodic(const Duration(seconds: 5), (_) => _cleanupOfflineDevices());
-      // Start TCP ping for paired devices (Windows only fallback)
-      if (Platform.isWindows) {
-        _pingTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pingPairedDevices());
-      }
+      // Start TCP ping for paired devices (fallback when UDP is blocked)
+      _pingTimer = Timer.periodic(const Duration(seconds: 4), (_) => _pingPairedDevices());
 
       // Send initial presence broadcast immediately
       await broadcastPresence();
@@ -180,38 +178,38 @@ class DiscoveryService extends ChangeNotifier {
   }
 
   Future<void> _pingPairedDevices() async {
-    if (!Platform.isWindows) return;
-
     final paired = _storageService.getPairedDevices();
     if (paired.isEmpty) return;
 
     final client = HttpClient();
     client.connectionTimeout = const Duration(milliseconds: 1500);
 
-    // Get current local IP to check gateway
+    // Get current local IP to derive subnet
     final localIp = await getLocalIp();
-    String? gatewayIp;
+
+    // Build list of (ip, port) targets to probe
+    final targets = <({String ip, int port})>{};
+
+    // 1. Add each paired device's stored IP + port
+    for (final peer in paired) {
+      if (peer.ip.isNotEmpty) {
+        targets.add((ip: peer.ip, port: peer.port));
+      }
+    }
+
+    // 2. Add gateway IP (.1) with each paired device's port
     if (localIp != null) {
       final parts = localIp.split('.');
       if (parts.length == 4) {
-        gatewayIp = '${parts[0]}.${parts[1]}.${parts[2]}.1';
+        final gatewayIp = '${parts[0]}.${parts[1]}.${parts[2]}.1';
+        for (final peer in paired) {
+          targets.add((ip: gatewayIp, port: peer.port));
+        }
       }
     }
 
-    // Set of IPs we want to ping
-    final ipsToPing = <String>{};
-    for (final peer in paired) {
-      if (peer.ip.isNotEmpty) {
-        ipsToPing.add(peer.ip);
-      }
-    }
-    if (gatewayIp != null) {
-      ipsToPing.add(gatewayIp);
-    }
-
-    final pingFutures = ipsToPing.map((ip) async {
+    Future<void> probe(String ip, int port) async {
       try {
-        final port = 53843; // Default port
         final uri = Uri.parse('http://$ip:$port/api/status');
         final request = await client.getUrl(uri);
         final response = await request.close();
@@ -222,6 +220,9 @@ class DiscoveryService extends ChangeNotifier {
           final id = json['id'] as String;
           final name = json['name'] as String;
           final type = json['type'] as String? ?? 'mobile';
+
+          // Ignore our own device
+          if (id == _storageService.deviceId) return;
 
           DeviceNode? matchingPeer;
           try {
@@ -242,7 +243,7 @@ class DiscoveryService extends ChangeNotifier {
 
             _activeDevices[id] = updatedDevice;
 
-            // If the stored IP or name/type is different, update in SharedPreferences
+            // If the stored IP changed, update in SharedPreferences
             if (matchingPeer.ip != ip || matchingPeer.name != name || matchingPeer.type != type) {
               final newPairedNode = matchingPeer.copyWith(ip: ip, name: name, type: type);
               await _storageService.addPairedDevice(newPairedNode);
@@ -252,9 +253,9 @@ class DiscoveryService extends ChangeNotifier {
       } catch (_) {
         // Ping failed, ignore
       }
-    });
+    }
 
-    await Future.wait(pingFutures);
+    await Future.wait(targets.map((t) => probe(t.ip, t.port)));
     notifyListeners();
     client.close();
   }

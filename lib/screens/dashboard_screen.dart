@@ -778,7 +778,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Transfer files to your computer instantly. Click to download the Windows installer.',
+                          'Transfer files to your computer instantly. Visit the download page to get the Windows installer.',
                           style: TextStyle(
                             fontSize: 13,
                             color: theme.colorScheme.onSurfaceVariant,
@@ -789,7 +789,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         FilledButton.icon(
                           onPressed: () async {
                             final url = Uri.parse(
-                              'https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe',
+                              'https://serdevir91.github.io/autoshare/',
                             );
                             if (await canLaunchUrl(url)) {
                               await launchUrl(
@@ -800,14 +800,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Could not open download link.'),
+                                    content: Text('Could not open download page.'),
                                   ),
                                 );
                               }
                             }
                           },
-                          icon: const Icon(Icons.download_rounded, size: 18),
-                          label: const Text('Download Installer'),
+                          icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                          label: const Text('Download Portal'),
                           style: FilledButton.styleFrom(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
