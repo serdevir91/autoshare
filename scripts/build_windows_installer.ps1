@@ -15,9 +15,20 @@ $content = $content -replace [regex]::Escape("// Add firewall rules for AutoShar
 // Replace existing rules to avoid duplicates
     Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Exec('netsh', 'advfirewall firewall delete rule name="AutoShare TCP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    // Add safer inbound rules scoped to private profile and this executable only
-    Exec('netsh', 'advfirewall firewall add rule name="AutoShare UDP" dir=in action=allow profile=private program="{app}\autoshare.exe" protocol=UDP localport=53842', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec('netsh', 'advfirewall firewall add rule name="AutoShare TCP" dir=in action=allow profile=private program="{app}\autoshare.exe" protocol=TCP localport=53843', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // Add safer inbound rules scoped to any network profile (critical for public/hotspot networks) and this executable only
+    Exec('netsh', 'advfirewall firewall add rule name="AutoShare UDP" dir=in action=allow profile=any program="{app}\autoshare.exe" protocol=UDP localport=53842', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('netsh', 'advfirewall firewall add rule name="AutoShare TCP" dir=in action=allow profile=any program="{app}\autoshare.exe" protocol=TCP localport=53843', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare TCP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 "@
 
 Set-Content -Path $issPath -Value $content -NoNewline
