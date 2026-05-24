@@ -33,29 +33,27 @@
 - ✅ **Android** (arm64, armeabi-v7a, x86_64)
 - ✅ **Windows** (x64)
 
-## 🖼️ Play Store Assets (v2)
+## 📥 Downloads & Installation
 
-### Feature Graphic
+You can download the latest pre-compiled binaries for your device or visit the web download portal:
 
-![AutoShare Feature Graphic](playstore_ready_v2/feature_graphic_1024x500.jpg)
+🌐 **[AutoShare Download Portal](https://serdevir91.github.io/autoshare/)**
 
-### Phone Screenshots
+### Supported Platforms
+- 💻 **[Download for Windows (.exe)](https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe)** (Windows 10/11 x64)
+- 🤖 **[Download Direct APK](https://github.com/serdevir91/autoshare/releases/latest/download/autoshare-release.apk)** (Android 5.0+)
+- 📱 **[Get it on Google Play Store](https://play.google.com/store/apps/details?id=com.autoshare.app)**
 
-![Share Files Fast](playstore_ready_v2/phone/01_share_fast.jpg)
-![Pair Securely](playstore_ready_v2/phone/02_pair_securely.jpg)
-![Open APK Native](playstore_ready_v2/phone/03_open_apk_native.jpg)
-![Manage Files](playstore_ready_v2/phone/04_manage_files.jpg)
-![No Cloud Needed](playstore_ready_v2/phone/05_no_cloud_needed.jpg)
-![Cross Device Transfer](playstore_ready_v2/phone/06_cross_device.jpg)
-![Why AutoShare](playstore_ready_v2/phone/07_why_autoshare.jpg)
-![Core Features](playstore_ready_v2/phone/08_core_features.jpg)
+---
 
-### Tablet Screenshots
+## 📸 Screenshots
 
-![7-inch Dashboard](playstore_ready_v2/tablet_7/01_dashboard_7in.jpg)
-![7-inch Transfer](playstore_ready_v2/tablet_7/02_transfer_7in.jpg)
-![10-inch Dashboard](playstore_ready_v2/tablet_10/01_dashboard_10in.jpg)
-![10-inch Privacy](playstore_ready_v2/tablet_10/04_privacy_10in.jpg)
+<p align="center">
+  <img src="ss/ss1.jpeg" width="200" alt="Dashboard" style="margin: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+  <img src="ss/ss2.jpeg" width="200" alt="Pairing" style="margin: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+  <img src="ss/ss3.jpeg" width="200" alt="File Manager" style="margin: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+  <img src="ss/ss4.jpeg" width="200" alt="Settings" style="margin: 10px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+</p>
 
 ## 🏗️ Architecture
 

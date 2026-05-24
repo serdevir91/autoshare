@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AutoShare — Automatic Local File Sharing</title>
+  <meta name="description" content="Download AutoShare for Windows and Android. Pair, send, and transfer files automatically over local network with zero configuration.">
+  
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(17, 24, 39, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #9061f9; /* Violet */
+      --primary-hover: #7e3af2;
+      --secondary: #3b82f6; /* Blue */
+      --glow: rgba(144, 97, 249, 0.15);
+      --font-title: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      overflow-x: hidden;
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(144, 97, 249, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.06) 0%, transparent 45%);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 50px;
+      animation: fadeInDown 0.8s ease-out;
+    }
+
+    .logo-container {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 20px;
+    }
+
+    .logo-glow {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      height: 100px;
+      background: var(--primary);
+      filter: blur(40px);
+      opacity: 0.4;
+      border-radius: 50%;
+      z-index: 1;
+    }
+
+    .logo {
+      position: relative;
+      z-index: 2;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+      border: 1px solid var(--card-border);
+      padding: 20px;
+      border-radius: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      width: 90px;
+      height: 90px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    h1 {
+      font-family: var(--font-title);
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #ffffff 40%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .tagline {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Main Grid / Download Section */
+    .download-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 30px;
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 60px;
+      animation: fadeInUp 0.8s ease-out;
+    }
+
+    @media (min-width: 768px) {
+      .download-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 28px;
+      padding: 40px;
+      text-align: center;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at top right, var(--glow), transparent 60%);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+
+    .card:hover {
+      transform: translateY(-8px);
+      border-color: rgba(144, 97, 249, 0.3);
+      box-shadow: 0 30px 60px rgba(144, 97, 249, 0.08);
+    }
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card-icon {
+      width: 60px;
+      height: 60px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      color: var(--primary);
+    }
+
+    .card:hover .card-icon {
+      color: #ffffff;
+      background: var(--primary);
+      transform: scale(1.05);
+      transition: all 0.3s ease;
+    }
+
+    h2 {
+      font-family: var(--font-title);
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      letter-spacing: -0.01em;
+    }
+
+    .card-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 30px;
+      max-width: 280px;
+      flex-grow: 1;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 16px 28px;
+      font-family: var(--font-title);
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 14px;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      gap: 10px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 4px 20px rgba(144, 97, 249, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      box-shadow: 0 6px 26px rgba(144, 97, 249, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 12px;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .btn-googleplay {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .btn-googleplay:hover {
+      background: #111111;
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .android-options {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Features Grid */
+    .features-section {
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 60px;
+      animation: fadeInUp 1s ease-out;
+    }
+
+    .features-title {
+      font-family: var(--font-title);
+      font-size: 1.6rem;
+      text-align: center;
+      margin-bottom: 30px;
+      font-weight: 700;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+    }
+
+    @media (min-width: 600px) {
+      .features-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    .feature-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 20px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .feature-item h3 {
+      font-family: var(--font-title);
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+
+    .feature-item p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* Screenshots Gallery */
+    .gallery-section {
+      width: 100%;
+      max-width: 900px;
+      margin-bottom: 60px;
+      text-align: center;
+    }
+
+    .gallery-grid {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      overflow-x: auto;
+      padding: 20px 10px;
+      scroll-snap-type: x mandatory;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    }
+
+    .gallery-img {
+      flex: 0 0 auto;
+      width: 180px;
+      height: auto;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      scroll-snap-align: center;
+      transition: transform 0.3s ease;
+    }
+
+    .gallery-img:hover {
+      transform: scale(1.05);
+    }
+
+    /* Footer */
+    footer {
+      width: 100%;
+      border-top: 1px solid var(--card-border);
+      padding: 30px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+
+    footer a:hover {
+      color: #ffffff;
+      text-decoration: underline;
+    }
+
+    /* Animations */
+    @keyframes fadeInDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- Header -->
+    <header>
+      <div class="logo-container">
+        <div class="logo-glow"></div>
+        <div class="logo">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17V13H17V11H13V7H11V11H7V13H11V17H13Z" fill="url(#paint0_linear)"/>
+            <defs>
+              <linearGradient id="paint0_linear" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#c084fc"/>
+                <stop offset="1" stop-color="#6366f1"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+      <h1>AutoShare</h1>
+      <p class="tagline">Automatic local file sharing. Pair, send, done.</p>
+    </header>
+
+    <!-- Download Options Grid -->
+    <div class="download-grid">
+      
+      <!-- Windows Card -->
+      <div class="card">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+          <div class="card-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.45H0V3.449zM0 12.45h9.75v9.45L0 20.551v-8.1zM10.8 1.95L24 0v11.55H10.8V1.95zM10.8 12.45H24v11.55l-13.2-1.95v-9.6z"/>
+            </svg>
+          </div>
+          <h2>Windows</h2>
+          <p class="card-desc">Download the standalone installer for Windows 10/11 x64 computers.</p>
+        </div>
+        <a href="https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Download Installer (.exe)
+        </a>
+      </div>
+
+      <!-- Android Card -->
+      <div class="card">
+        <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+          <div class="card-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.523 15.3c-.149 0-.29-.029-.42-.087a.972.972 0 0 1-.58-.893c0-.541.439-.98.98-.98h.04c.541 0 .98.439.98.98a.977.977 0 0 1-.98.98h-.02zm-11.086 0c-.149 0-.29-.029-.42-.087a.972.972 0 0 1-.58-.893c0-.541.439-.98.98-.98h.04c.541 0 .98.439.98.98a.977.977 0 0 1-.98.98h-.02zm11.455-5.903l1.83-3.17a.49.49 0 0 0-.179-.67.489.489 0 0 0-.671.18l-1.85 3.203a11.954 11.954 0 0 0-10.384 0L4.437 4.74a.487.487 0 0 0-.671-.18.49.49 0 0 0-.179.67l1.83 3.17C2.176 10.457.5 13.018.5 15.932h23c0-2.914-1.676-5.475-4.918-6.535z"/>
+            </svg>
+          </div>
+          <h2>Android</h2>
+          <p class="card-desc">Download on the Play Store or install the direct APK package.</p>
+        </div>
+        <div class="android-options">
+          <a href="https://github.com/serdevir91/autoshare/releases/latest/download/autoshare-release.apk" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            Download Direct APK
+          </a>
+          <a href="https://play.google.com/store/apps/details?id=com.autoshare.app" target="_blank" class="btn btn-googleplay">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 2px;">
+              <path d="M3.609 1.814L13.783 12 3.609 22.186A2.229 2.229 0 0 1 3 20.59V3.41c0-.628.225-1.196.609-1.596zm15.19 5.093l-3.328 1.9L14.73 12.95l.741.74 3.328 1.9c1.077.615 1.701-.192 1.701-1.34v-5.05c0-1.148-.624-1.955-1.701-1.339zm-7.618 6.5l-2.05-2.05L4.41 19.38l6.771-3.87.001-.103zm0-2.814l6.772-3.87L4.41 4.62l4.721 8.026.001-.11z"/>
+            </svg>
+            Get it on Google Play
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Quick Features -->
+    <div class="features-section">
+      <h2 class="features-title">Why AutoShare?</h2>
+      <div class="features-grid">
+        <div class="feature-item">
+          <h3>⚡ Auto Accept</h3>
+          <p>Once you pair devices, files are automatically accepted. No need to click approve every time.</p>
+        </div>
+        <div class="feature-item">
+          <h3>🔒 100% Local</h3>
+          <p>Files are transferred over your local Wi-Fi. Completely private, fast, and does not consume internet quota.</p>
+        </div>
+        <div class="feature-item">
+          <h3>🤝 Simple Pairing</h3>
+          <p>Connect devices using a secure token-based pairing system. Setup once, share forever.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Screenshots Gallery -->
+    <div class="gallery-section">
+      <h2 class="features-title">App Screenshots</h2>
+      <div class="gallery-grid">
+        <img class="gallery-img" src="../ss/ss1.jpeg" alt="Dashboard Screen">
+        <img class="gallery-img" src="../ss/ss2.jpeg" alt="Paired Devices">
+        <img class="gallery-img" src="../ss/ss3.jpeg" alt="File Browser">
+        <img class="gallery-img" src="../ss/ss4.jpeg" alt="Dark Mode Support">
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2026 AutoShare. All rights reserved. | <a href="https://github.com/serdevir91/autoshare" target="_blank">Source Code on GitHub</a> | <a href="https://github.com/serdevir91/autoshare-privacy-policy" target="_blank">Privacy Policy</a></p>
+  </footer>
+
+</body>
+</html>

@@ -14,6 +14,7 @@ class StorageService {
   static const String _keyDeviceName = 'device_name';
   static const String _keyDevicePort = 'device_port';
   static const String _keyPairedDevices = 'paired_devices';
+  static const String _keyShowWindowsBanner = 'show_windows_banner';
 
   late SharedPreferences _prefs;
   late Directory _rootDir;
@@ -212,13 +213,15 @@ class StorageService {
 
   // Generate target received file path, ensuring uniqueness
   String getUniqueFilePath(String filename) {
-    final targetPath = p.join(_rootDir.path, filename);
+    // Sanitize filename to prevent directory traversal
+    final safeFilename = p.basename(filename);
+    final targetPath = p.join(_rootDir.path, safeFilename);
     if (!File(targetPath).existsSync()) {
       return targetPath;
     }
 
-    final ext = p.extension(filename);
-    final base = p.basenameWithoutExtension(filename);
+    final ext = p.extension(safeFilename);
+    final base = p.basenameWithoutExtension(safeFilename);
     var counter = 1;
     while (true) {
       final checkPath = p.join(_rootDir.path, '$base ($counter)$ext');
@@ -227,5 +230,14 @@ class StorageService {
       }
       counter++;
     }
+  }
+
+  // Windows download banner visibility state
+  bool get showWindowsBanner {
+    return _prefs.getBool(_keyShowWindowsBanner) ?? true;
+  }
+
+  Future<void> setShowWindowsBanner(bool show) async {
+    await _prefs.setBool(_keyShowWindowsBanner, show);
   }
 }

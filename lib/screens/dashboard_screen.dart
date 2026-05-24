@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 import '../models/device_node.dart';
 import '../services/discovery_service.dart';
 import '../services/transfer_service.dart';
@@ -30,10 +31,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late StreamSubscription<PairRequestEvent> _pairSubscription;
   late StreamSubscription<TransferStatus> _transferSubscription;
   bool _isRefreshingPairedDevices = false;
+  bool _showWindowsBanner = true;
 
   @override
   void initState() {
     super.initState();
+    _showWindowsBanner = widget.storageService.showWindowsBanner;
 
     // Start discovery and HTTP server
     widget.discoveryService.start();
@@ -298,6 +301,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  void _removePairedDevice(String id, String name) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Remove Pairing'),
+          content: Text('Do you want to remove the pairing with $name?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                Navigator.pop(context);
+                await widget.storageService.removePairedDevice(id);
+                setState(() {}); // Rebuild to refresh paired list
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Pairing with $name removed.')),
+                );
+              },
+              child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _refreshPairedDevices() async {
     if (_isRefreshingPairedDevices) return;
     setState(() {
@@ -381,6 +417,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Windows Download Banner (Dismissible, only shown on Android)
+                  if (Platform.isAndroid && _showWindowsBanner)
+                    _buildWindowsDownloadBanner(theme),
+
                   // Local Device Info Card (Premium Glassmorphic style)
                   _buildLocalInfoCard(theme),
                   const SizedBox(height: 24),
@@ -461,10 +501,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            trailing: isOnline
-                                ? ElevatedButton.icon(
-                                    onPressed: () =>
-                                        _pickAndSendFile(freshPeer),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Colors.redAccent,
+                                  ),
+                                  tooltip: 'Unpair Device',
+                                  onPressed: () => _removePairedDevice(peer.id, peer.name),
+                                ),
+                                if (isOnline) ...[
+                                  const SizedBox(width: 8),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _pickAndSendFile(freshPeer),
                                     icon: const Icon(
                                       Icons.send_rounded,
                                       size: 16,
@@ -475,8 +526,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         borderRadius: BorderRadius.circular(10),
                                       ),
                                     ),
-                                  )
-                                : null,
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -659,6 +712,131 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildWindowsDownloadBanner(ThemeData theme) {
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 24.0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.secondaryContainer.withAlpha(120),
+              theme.colorScheme.surfaceContainer,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withAlpha(80),
+            width: 1,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: theme.colorScheme.primary.withAlpha(30),
+                    radius: 24,
+                    child: Icon(
+                      Icons.laptop_windows_rounded,
+                      color: theme.colorScheme.primary,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'AutoShare for Windows',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Transfer files to your computer instantly. Click to download the Windows installer.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed: () async {
+                            final url = Uri.parse(
+                              'https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe',
+                            );
+                            if (await canLaunchUrl(url)) {
+                              await launchUrl(
+                                url,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            } else {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Could not open download link.'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.download_rounded, size: 18),
+                          label: const Text('Download Installer'),
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 24), // Space for close button
+                ],
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: theme.colorScheme.onSurfaceVariant.withAlpha(180),
+                  size: 20,
+                ),
+                tooltip: 'Dismiss',
+                onPressed: () async {
+                  setState(() {
+                    _showWindowsBanner = false;
+                  });
+                  await widget.storageService.setShowWindowsBanner(false);
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
