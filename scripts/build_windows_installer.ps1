@@ -10,7 +10,7 @@ if (-not (Test-Path $issPath)) {
 }
 
 $content = Get-Content -Raw $issPath
-$content = $content -replace "PrivilegesRequired=lowest", "PrivilegesRequired=admin"
+$content = $content -replace "PrivilegesRequired=lowest", "PrivilegesRequired=admin`r`nCloseApplications=force"
 $content = $content -replace [regex]::Escape("// Add firewall rules for AutoShare`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare UDP"" dir=in action=allow protocol=UDP localport=53842', '', SW_HIDE, ewNoWait, ResultCode);`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare TCP"" dir=in action=allow protocol=TCP localport=53843', '', SW_HIDE, ewNoWait, ResultCode);"), @"
 // Replace existing rules to avoid duplicates
     Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);

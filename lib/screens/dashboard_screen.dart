@@ -8,6 +8,7 @@ import '../models/device_node.dart';
 import '../services/discovery_service.dart';
 import '../services/transfer_service.dart';
 import '../services/storage_service.dart';
+import '../services/update_service.dart';
 import 'file_manager_screen.dart';
 import 'settings_screen.dart';
 
@@ -41,6 +42,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // Start discovery and HTTP server
     widget.discoveryService.start();
     widget.transferService.startServer();
+
+    // Check for updates on startup (Windows only)
+    if (Platform.isWindows) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        UpdateService.check(context);
+      });
+    }
 
     // Listen for pairing requests
     _pairSubscription = widget.transferService.onPairRequest.listen((event) {

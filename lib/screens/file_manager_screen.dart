@@ -77,7 +77,11 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   void _refreshFiles() {
     setState(() {
-      _files = widget.storageService.listFiles(_currentPath);
+      if (Platform.isWindows && _currentPath == 'Computer') {
+        _files = widget.storageService.getWindowsDrives();
+      } else {
+        _files = widget.storageService.listFiles(_currentPath);
+      }
     });
   }
 
@@ -90,6 +94,29 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   void _navigateUp() {
+    if (Platform.isWindows) {
+      if (_currentPath == 'Computer') {
+        Navigator.of(context).pop();
+        return;
+      }
+      final parentDir = Directory(_currentPath).parent;
+      if (parentDir.path == _currentPath) {
+        // We reached the absolute root (e.g. C:\)
+        setState(() {
+          _currentPath = 'Computer';
+          _highlightedFile = null;
+        });
+        _refreshFiles();
+        return;
+      }
+      setState(() {
+        _currentPath = parentDir.path;
+        _highlightedFile = null;
+      });
+      _refreshFiles();
+      return;
+    }
+
     if (_currentPath == widget.storageService.rootPath) {
       Navigator.of(context).pop();
       return;
@@ -146,6 +173,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   IconData _getFileIcon(SharedFile file) {
+    if (Platform.isWindows && file.path.endsWith(':\\')) {
+      return Icons.storage_rounded;
+    }
     if (file.isDirectory) return Icons.folder_rounded;
 
     final ext = p.extension(file.path).toLowerCase();
@@ -191,6 +221,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   Color _getIconColor(SharedFile file, ThemeData theme) {
+    if (Platform.isWindows && file.path.endsWith(':\\')) {
+      return theme.colorScheme.primary;
+    }
     if (file.isDirectory) return Colors.amber.shade700;
 
     final ext = p.extension(file.path).toLowerCase();
@@ -425,6 +458,77 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   // Helper to format breadcrumb path items
   List<Widget> _buildBreadcrumbs(ThemeData theme) {
+    if (Platform.isWindows) {
+      if (_currentPath == 'Computer') {
+        return [
+          Text(
+            'This PC',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ];
+      }
+
+      final parts = _currentPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).toList();
+      final drive = _currentPath.startsWith(RegExp(r'^[a-zA-Z]:')) 
+          ? _currentPath.substring(0, 2) + Platform.pathSeparator
+          : Platform.pathSeparator;
+
+      final isDriveLast = parts.isEmpty || (parts.length == 1 && parts[0].endsWith(':'));
+
+      List<Widget> crumbs = [
+        GestureDetector(
+          onTap: () => _navigateInto('Computer'),
+          child: Text(
+            'This PC',
+            style: TextStyle(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+        const Icon(Icons.chevron_right_rounded, size: 16),
+        GestureDetector(
+          onTap: isDriveLast ? null : () => _navigateInto(drive),
+          child: Text(
+            drive.replaceAll(Platform.pathSeparator, ''),
+            style: TextStyle(
+              color: isDriveLast ? theme.colorScheme.onSurface : theme.colorScheme.primary,
+              fontWeight: isDriveLast ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ),
+      ];
+
+      var accumPath = drive;
+      for (int i = 0; i < parts.length; i++) {
+        if (i == 0 && parts[i].endsWith(':')) continue;
+        crumbs.add(const Icon(Icons.chevron_right_rounded, size: 16));
+        accumPath = p.join(accumPath, parts[i]);
+        final currentAccumPath = accumPath;
+        final isLast = i == parts.length - 1;
+
+        crumbs.add(
+          Flexible(
+            child: GestureDetector(
+              onTap: isLast ? null : () => _navigateInto(currentAccumPath),
+              child: Text(
+                parts[i],
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: isLast ? FontWeight.bold : FontWeight.normal,
+                  color: isLast ? theme.colorScheme.onSurface : theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      return crumbs;
+    }
+
     final root = widget.storageService.rootPath;
     if (_currentPath == root) {
       return [
@@ -629,10 +733,17 @@ class _FolderPickerBottomSheetState extends State<_FolderPickerBottomSheet> {
 
   void _refreshDirs() {
     setState(() {
-      _subdirs = widget.storageService
-          .listFiles(_currentPath)
-          .where((f) => f.isDirectory && f.path != widget.excludePath)
-          .toList();
+      if (Platform.isWindows && _currentPath == 'Computer') {
+        _subdirs = widget.storageService
+            .getWindowsDrives()
+            .where((f) => f.path != widget.excludePath)
+            .toList();
+      } else {
+        _subdirs = widget.storageService
+            .listFiles(_currentPath)
+            .where((f) => f.isDirectory && f.path != widget.excludePath)
+            .toList();
+      }
     });
   }
 
@@ -644,6 +755,23 @@ class _FolderPickerBottomSheetState extends State<_FolderPickerBottomSheet> {
   }
 
   void _navigateUp() {
+    if (Platform.isWindows) {
+      if (_currentPath == 'Computer') return;
+      final parentDir = Directory(_currentPath).parent;
+      if (parentDir.path == _currentPath) {
+        setState(() {
+          _currentPath = 'Computer';
+        });
+        _refreshDirs();
+        return;
+      }
+      setState(() {
+        _currentPath = parentDir.path;
+      });
+      _refreshDirs();
+      return;
+    }
+
     if (_currentPath == widget.storageService.rootPath) return;
     setState(() {
       _currentPath = Directory(_currentPath).parent.path;
@@ -654,8 +782,12 @@ class _FolderPickerBottomSheetState extends State<_FolderPickerBottomSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isRoot = _currentPath == widget.storageService.rootPath;
-    final folderName = isRoot ? 'Root' : p.basename(_currentPath);
+    final isRoot = Platform.isWindows 
+        ? _currentPath == 'Computer'
+        : _currentPath == widget.storageService.rootPath;
+    final folderName = isRoot 
+        ? (Platform.isWindows ? 'This PC' : 'Root') 
+        : p.basename(_currentPath);
 
     return Container(
       height: MediaQuery.of(context).size.height * 0.7,
@@ -756,7 +888,9 @@ class _FolderPickerBottomSheetState extends State<_FolderPickerBottomSheet> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => widget.onFolderSelected(_currentPath),
+                    onPressed: _currentPath == 'Computer'
+                        ? null
+                        : () => widget.onFolderSelected(_currentPath),
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

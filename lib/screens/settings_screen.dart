@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../services/storage_service.dart';
 import '../services/transfer_service.dart';
+import '../services/update_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final StorageService storageService;
@@ -20,19 +23,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _portController;
+  late TextEditingController _downloadPathController;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.storageService.deviceName);
     _portController = TextEditingController(text: widget.storageService.devicePort.toString());
+    _downloadPathController = TextEditingController(text: widget.storageService.rootPath);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _portController.dispose();
+    _downloadPathController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDownloadPath() async {
+    final path = await FilePicker.getDirectoryPath();
+    if (path != null) {
+      setState(() {
+        _downloadPathController.text = path;
+      });
+    }
   }
 
   Future<void> _saveSettings() async {
@@ -40,11 +55,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     final newName = _nameController.text.trim();
     final newPort = int.parse(_portController.text.trim());
+    final newDownloadPath = _downloadPathController.text.trim();
 
     final oldPort = widget.storageService.devicePort;
 
     await widget.storageService.setDeviceName(newName);
     await widget.storageService.setDevicePort(newPort);
+    if (newDownloadPath.isNotEmpty) {
+      await widget.storageService.setDownloadPath(newDownloadPath);
+    }
 
     // If port changed, restart HTTP Server
     if (oldPort != newPort) {
@@ -157,6 +176,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
 
+              // Download Folder Selector
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _downloadPathController,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: 'Download Folder',
+                        helperText: 'Incoming files will be saved here.',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        prefixIcon: const Icon(Icons.folder_shared_rounded),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    height: 56,
+                    child: OutlinedButton.icon(
+                      onPressed: _pickDownloadPath,
+                      icon: const Icon(Icons.folder_open_rounded),
+                      label: const Text('Browse'),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+
               // Save Button
               SizedBox(
                 width: double.infinity,
@@ -170,6 +221,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
+              
+              if (Platform.isWindows) ...[
+                const SizedBox(height: 24),
+                Text(
+                  'Software Updates',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      UpdateService.check(context, showUpToDate: true);
+                    },
+                    icon: const Icon(Icons.update_rounded),
+                    label: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 32),
 
               // Paired Devices Management Section

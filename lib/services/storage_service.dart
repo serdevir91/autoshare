@@ -57,7 +57,23 @@ class StorageService {
   }
 
   // File explorer root directory path
-  String get rootPath => _rootDir.path;
+  String get rootPath {
+    final customPath = _prefs.getString('download_path');
+    if (customPath != null && customPath.isNotEmpty) {
+      final dir = Directory(customPath);
+      if (!dir.existsSync()) {
+        try {
+          dir.createSync(recursive: true);
+        } catch (_) {}
+      }
+      return dir.path;
+    }
+    return _rootDir.path;
+  }
+
+  Future<void> setDownloadPath(String path) async {
+    await _prefs.setString('download_path', path);
+  }
 
   // Preferences accessors
   String get deviceId {
@@ -135,6 +151,27 @@ class StorageService {
     } catch (_) {
       return null;
     }
+  }
+
+  List<SharedFile> getWindowsDrives() {
+    List<SharedFile> drives = [];
+    if (!Platform.isWindows) return drives;
+    for (var letter = 65; letter <= 90; letter++) {
+      final drivePath = '${String.fromCharCode(letter)}:\\';
+      final dir = Directory(drivePath);
+      try {
+        if (dir.existsSync()) {
+          drives.add(SharedFile(
+            name: 'Local Disk (${String.fromCharCode(letter)}:)',
+            path: drivePath,
+            isDirectory: true,
+            size: 0,
+            dateModified: DateTime.now(),
+          ));
+        }
+      } catch (_) {}
+    }
+    return drives;
   }
 
   // File explorer logic
@@ -215,7 +252,7 @@ class StorageService {
   String getUniqueFilePath(String filename) {
     // Sanitize filename to prevent directory traversal
     final safeFilename = p.basename(filename);
-    final targetPath = p.join(_rootDir.path, safeFilename);
+    final targetPath = p.join(rootPath, safeFilename);
     if (!File(targetPath).existsSync()) {
       return targetPath;
     }
@@ -224,7 +261,7 @@ class StorageService {
     final base = p.basenameWithoutExtension(safeFilename);
     var counter = 1;
     while (true) {
-      final checkPath = p.join(_rootDir.path, '$base ($counter)$ext');
+      final checkPath = p.join(rootPath, '$base ($counter)$ext');
       if (!File(checkPath).existsSync()) {
         return checkPath;
       }
