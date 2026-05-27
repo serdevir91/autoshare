@@ -43,8 +43,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     widget.discoveryService.start();
     widget.transferService.startServer();
 
-    // Check for updates on startup (Windows only)
-    if (Platform.isWindows) {
+    // Check for updates on startup (Windows and Android)
+    if (Platform.isWindows || Platform.isAndroid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         UpdateService.check(context);
       });
@@ -137,115 +137,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_isTransferDialogOpen) return;
     _isTransferDialogOpen = true;
 
-    showDialog(
+    showDialog<TransferStatus>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
-        return StreamBuilder<TransferStatus>(
-          stream: widget.transferService.onTransferStatus,
-          initialData: initialStatus,
-          builder: (context, snapshot) {
-            final status = snapshot.data!;
-            final isDone = status.status == TransferState.completed;
-            final isFailed = status.status == TransferState.failed;
-
-            if (isDone || isFailed) {
-              final nav = Navigator.of(context);
-              Future.delayed(const Duration(milliseconds: 1500), () {
-                if (mounted && nav.canPop()) {
-                  nav.pop();
-                  _isTransferDialogOpen = false;
-                  if (isDone && status.isIncoming && status.filePath != null) {
-                    // Prompt user to open file manager on completion
-                    _showFileReceivedSnackBar(
-                      status.fileName,
-                      status.filePath!,
-                    );
-                  }
-                }
-              });
-            }
-
-            return PopScope(
-              canPop: false,
-              child: AlertDialog(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(height: 10),
-                    if (status.status == TransferState.running) ...[
-                      SizedBox(
-                        height: 80,
-                        width: 80,
-                        child: CircularProgressIndicator(
-                          value: status.progress,
-                          strokeWidth: 8,
-                          backgroundColor: Colors.grey.shade200,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        status.isIncoming ? 'Receiving File' : 'Sending File',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ] else if (isDone) ...[
-                      const Icon(
-                        Icons.check_circle,
-                        color: Colors.green,
-                        size: 80,
-                      ),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Transfer Complete',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.green,
-                        ),
-                      ),
-                    ] else ...[
-                      const Icon(Icons.error, color: Colors.red, size: 80),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Transfer Failed',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.red,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      status.fileName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    if (status.status == TransferState.running)
-                      Text(
-                        '${_formatSize(status.bytesTransferred)} / ${_formatSize(status.fileSize)} (%${(status.progress * 100).toInt()})',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                  ],
-                ),
-              ),
-            );
-          },
+        return TransferProgressDialog(
+          initialStatus: initialStatus,
+          transferStatusStream: widget.transferService.onTransferStatus,
         );
       },
-    ).then((_) => _isTransferDialogOpen = false);
+    ).then((finalStatus) {
+      _isTransferDialogOpen = false;
+      if (finalStatus != null &&
+          finalStatus.status == TransferState.completed &&
+          finalStatus.isIncoming &&
+          finalStatus.filePath != null) {
+        _showFileReceivedSnackBar(
+          finalStatus.fileName,
+          finalStatus.filePath!,
+        );
+      }
+    });
   }
 
   void _showFileReceivedSnackBar(String fileName, String filePath) {
@@ -270,17 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  String _formatSize(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const suffixes = ["B", "KB", "MB", "GB"];
-    double size = bytes.toDouble();
-    int suffixIndex = 0;
-    while (size >= 1024 && suffixIndex < suffixes.length - 1) {
-      size /= 1024;
-      suffixIndex++;
-    }
-    return '${size.toStringAsFixed(1)} ${suffixes[suffixIndex]}';
-  }
+
 
   Future<void> _pickAndSendFile(DeviceNode device) async {
     final result = await FilePicker.pickFiles(allowMultiple: false);
@@ -901,6 +803,167 @@ class _DashboardScreenState extends State<DashboardScreen> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class TransferProgressDialog extends StatefulWidget {
+  final TransferStatus initialStatus;
+  final Stream<TransferStatus> transferStatusStream;
+
+  const TransferProgressDialog({
+    super.key,
+    required this.initialStatus,
+    required this.transferStatusStream,
+  });
+
+  @override
+  State<TransferProgressDialog> createState() => _TransferProgressDialogState();
+}
+
+class _TransferProgressDialogState extends State<TransferProgressDialog> {
+  late TransferStatus _status;
+  StreamSubscription<TransferStatus>? _subscription;
+  bool _isClosing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = widget.initialStatus;
+    _listenToStream();
+  }
+
+  void _listenToStream() {
+    _subscription = widget.transferStatusStream.listen((status) {
+      if (!mounted) return;
+      setState(() {
+        _status = status;
+      });
+
+      if (status.status == TransferState.completed || status.status == TransferState.failed) {
+        _subscription?.cancel();
+        _subscription = null;
+        _closeDialogWithDelay(status);
+      }
+    });
+
+    // Handle case where initial status is already completed or failed
+    if (_status.status == TransferState.completed || _status.status == TransferState.failed) {
+      _subscription?.cancel();
+      _subscription = null;
+      _closeDialogWithDelay(_status);
+    }
+  }
+
+  void _closeDialogWithDelay(TransferStatus finalStatus) {
+    if (_isClosing) return;
+    _isClosing = true;
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) {
+        Navigator.of(context).pop(finalStatus);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  String _formatSize(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const suffixes = ["B", "KB", "MB", "GB"];
+    double size = bytes.toDouble();
+    int suffixIndex = 0;
+    while (size >= 1024 && suffixIndex < suffixes.length - 1) {
+      size /= 1024;
+      suffixIndex++;
+    }
+    return '${size.toStringAsFixed(1)} ${suffixes[suffixIndex]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    final isDone = status.status == TransferState.completed;
+
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            if (status.status == TransferState.running) ...[
+              SizedBox(
+                height: 80,
+                width: 80,
+                child: CircularProgressIndicator(
+                  value: status.progress,
+                  strokeWidth: 8,
+                  backgroundColor: Colors.grey.shade200,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                status.isIncoming ? 'Receiving File' : 'Sending File',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ] else if (isDone) ...[
+              const Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 80,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Transfer Complete',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.green,
+                ),
+              ),
+            ] else ...[
+              const Icon(Icons.error, color: Colors.red, size: 80),
+              const SizedBox(height: 24),
+              const Text(
+                'Transfer Failed',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.red,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              status.fileName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            if (status.status == TransferState.running)
+              Text(
+                '${_formatSize(status.bytesTransferred)} / ${_formatSize(status.fileSize)} (%${(status.progress * 100).toInt()})',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
       ),
     );
   }

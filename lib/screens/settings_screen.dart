@@ -222,7 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               
-              if (Platform.isWindows) ...[
+              if (Platform.isWindows || Platform.isAndroid) ...[
                 const SizedBox(height: 24),
                 Text(
                   'Software Updates',

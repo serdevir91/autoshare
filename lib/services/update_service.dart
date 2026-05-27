@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class UpdateService {
   // Current app version matching pubspec.yaml
-  static const String currentVersion = '1.0.3';
+  static const String currentVersion = '1.0.4';
   static const String repoUrl = 'https://api.github.com/repos/serdevir91/autoshare/releases/latest';
 
   // Compare simple semantic version strings (e.g. 1.0.2 vs 1.0.3)
@@ -28,7 +29,7 @@ class UpdateService {
 
   // Check for updates
   static Future<void> check(BuildContext context, {bool showUpToDate = false}) async {
-    if (!Platform.isWindows) return;
+    if (!Platform.isWindows && !Platform.isAndroid) return;
 
     final client = HttpClient();
     client.userAgent = 'AutoShare-Updater';
@@ -175,9 +176,19 @@ class UpdateService {
               child: const Text('Later'),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogContext);
-                _performUpdate(context);
+                if (Platform.isWindows) {
+                  _performUpdate(context);
+                } else {
+                  final url = Uri.parse('https://github.com/serdevir91/autoshare/releases/latest');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(
+                      url,
+                      mode: LaunchMode.externalApplication,
+                    );
+                  }
+                }
               },
               style: ElevatedButton.styleFrom(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
