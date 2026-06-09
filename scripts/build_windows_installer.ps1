@@ -22,9 +22,11 @@ if (-not (Test-Path $issPath)) {
 }
 
 $content = Get-Content -Raw $issPath
-$content = $content -replace "AppVersion=1.0.0", "AppVersion=$versionName"
-$content = $content -replace "OutputBaseFilename=AutoShare-Setup-1.0.0", "OutputBaseFilename=windows-setup-AutoShare"
-$content = $content -replace "PrivilegesRequired=admin", "PrivilegesRequired=admin`r`nCloseApplications=force"
+$content = $content -replace "AppVersion=[0-9\.]+", "AppVersion=$versionName"
+$content = $content -replace "OutputBaseFilename=AutoShare-Setup-[0-9\.]+", "OutputBaseFilename=windows-setup-AutoShare"
+if ($content -notmatch "CloseApplications=") {
+  $content = $content -replace "PrivilegesRequired=admin", "PrivilegesRequired=admin`r`nCloseApplications=force"
+}
 $content = $content -replace [regex]::Escape("// Add firewall rules for AutoShare`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare UDP"" dir=in action=allow protocol=UDP localport=53842', '', SW_HIDE, ewNoWait, ResultCode);`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare TCP"" dir=in action=allow protocol=TCP localport=53843', '', SW_HIDE, ewNoWait, ResultCode);"), @"
 // Replace existing rules to avoid duplicates
     Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
