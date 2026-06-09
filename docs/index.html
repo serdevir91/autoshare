@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>AutoShare — Automatic Local File Sharing</title>
   <meta name="description" content="Download AutoShare for Windows and Android. Pair, send, and transfer files automatically over local network with zero configuration.">
   <link rel="icon" type="image/png" href="assets/icon.png">
@@ -33,11 +36,17 @@
       padding: 0;
     }
 
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       background-color: var(--bg);
       color: var(--text);
       font-family: var(--font-body);
-      overflow-x: hidden;
       line-height: 1.6;
       display: flex;
       flex-direction: column;
@@ -111,6 +120,20 @@
       background: linear-gradient(135deg, #ffffff 40%, #c084fc 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+    }
+
+    .version-badge {
+      font-size: 1.2rem;
+      vertical-align: middle;
+      color: var(--primary);
+      background: rgba(144, 97, 249, 0.15);
+      padding: 4px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+      border: 1px solid rgba(144, 97, 249, 0.25);
+      font-weight: 600;
+      display: inline-block;
+      -webkit-text-fill-color: var(--primary);
     }
 
     .tagline {
@@ -330,9 +353,10 @@
     /* Screenshots Gallery */
     .gallery-section {
       width: 100%;
-      max-width: 900px;
+      max-width: 100%;
       margin-bottom: 60px;
       text-align: center;
+      overflow: hidden;
     }
 
     .gallery-grid {
@@ -340,11 +364,14 @@
       justify-content: flex-start;
       gap: 15px;
       overflow-x: auto;
+      width: 100%;
+      max-width: 100%;
       padding: 20px 10px;
       scroll-snap-type: x mandatory;
       scrollbar-width: thin;
       scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
       -webkit-overflow-scrolling: touch;
+      box-sizing: border-box;
     }
 
     @media (min-width: 800px) {
@@ -371,6 +398,14 @@
       }
       h1 {
         font-size: 2.2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      .version-badge {
+        margin-left: 0;
+        font-size: 1rem;
       }
       .tagline {
         font-size: 1.05rem;
@@ -484,7 +519,7 @@
           <img src="assets/icon.png" alt="AutoShare Logo" style="width: 100%; height: 100%; border-radius: 22px; object-fit: cover;" />
         </div>
       </div>
-      <h1>AutoShare <span style="font-size: 1.2rem; vertical-align: middle; color: var(--primary); background: rgba(144, 97, 249, 0.15); padding: 4px 10px; border-radius: 12px; margin-left: 8px; border: 1px solid rgba(144, 97, 249, 0.25); font-weight: 600;">v1.0.6</span></h1>
+      <h1>AutoShare <span class="version-badge">v1.0.6</span></h1>
       <p class="tagline">Automatic local file sharing. Pair, send, done.</p>
     </header>
 
