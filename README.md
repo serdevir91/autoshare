@@ -28,6 +28,7 @@
 | 🖥️ **Cross Platform** | Android and Windows support |
 | 🌐 **Hotspot Support** | Works on mobile hotspot networks |
 | 🔄 **Auto Update** | Automatically checks for updates on startup (Android & Windows) |
+| 🔞 **Play Age Signals** | Parental consent verification on Android for supervised accounts |
 
 ## 📱 Supported Platforms
 
@@ -70,6 +71,7 @@ autoshare/
 │   │   ├── file_manager_screen.dart # File manager
 │   │   └── settings_screen.dart     # Settings
 │   └── services/
+│       ├── age_signals_service.dart # Play Age Signals (Android)
 │       ├── discovery_service.dart   # UDP device discovery
 │       ├── notification_service.dart# Notification service
 │       ├── storage_service.dart     # Storage and preferences
@@ -130,6 +132,7 @@ flutter build windows
 - Random UUID v4 token generated during pairing
 - File transfers only accepted with a valid `pairToken`
 - Transfers from unpaired devices are automatically rejected
+- **Play Age Signals Integration (Android)**: Checks for parental approval on startup and settings, blocking application access if parent consent was denied for supervised accounts.
 
 ## 📄 License
 

@@ -7,18 +7,24 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.google.android.play.agesignals.AgeSignalsException
+import com.google.android.play.agesignals.AgeSignalsManagerFactory
+import com.google.android.play.agesignals.AgeSignalsRequest
+import com.google.android.play.agesignals.model.AgeSignalsErrorCode
+import com.google.android.play.agesignals.model.AgeSignalsVerificationStatus
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
-    private val channelName = "com.autoshare.app/file_ops"
+    private val fileOpsChannelName = "com.autoshare.app/file_ops"
+    private val ageSignalsChannelName = "com.autoshare.app/age_signals"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, fileOpsChannelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "installApk" -> {
@@ -44,6 +50,114 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ageSignalsChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "checkAgeSignals" -> checkAgeSignals(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun checkAgeSignals(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            result.success(
+                mapOf(
+                    "success" to false,
+                    "supported" to false,
+                    "shouldBlockAccess" to false,
+                    "message" to "Play Age Signals requires Android 6.0 (API 23) or newer.",
+                    "checkedAtMillis" to System.currentTimeMillis()
+                )
+            )
+            return
+        }
+
+        try {
+            val ageSignalsManager = AgeSignalsManagerFactory.create(applicationContext)
+            ageSignalsManager
+                .checkAgeSignals(AgeSignalsRequest.builder().build())
+                .addOnSuccessListener { ageSignalsResult ->
+                    val userStatus = ageSignalsResult.userStatus()
+                    result.success(
+                        mapOf(
+                            "success" to true,
+                            "supported" to true,
+                            "shouldBlockAccess" to
+                                (userStatus == AgeSignalsVerificationStatus.SUPERVISED_APPROVAL_DENIED),
+                            "userStatus" to ageSignalsStatusName(userStatus),
+                            "userStatusCode" to userStatus,
+                            "ageLower" to ageSignalsResult.ageLower(),
+                            "ageUpper" to ageSignalsResult.ageUpper(),
+                            "mostRecentApprovalDateMillis" to
+                                ageSignalsResult.mostRecentApprovalDate()?.time,
+                            "installId" to ageSignalsResult.installId(),
+                            "checkedAtMillis" to System.currentTimeMillis()
+                        )
+                    )
+                }
+                .addOnFailureListener { exception ->
+                    val ageSignalsException = exception as? AgeSignalsException
+                    val errorCode = ageSignalsException?.getErrorCode()
+                    result.success(
+                        mapOf(
+                            "success" to false,
+                            "supported" to true,
+                            "shouldBlockAccess" to false,
+                            "errorCode" to errorCode,
+                            "errorName" to ageSignalsErrorName(errorCode),
+                            "message" to (exception.message ?: "Play Age Signals request failed."),
+                            "checkedAtMillis" to System.currentTimeMillis()
+                        )
+                    )
+                }
+        } catch (exception: Exception) {
+            result.success(
+                mapOf(
+                    "success" to false,
+                    "supported" to true,
+                    "shouldBlockAccess" to false,
+                    "errorName" to "AGE_SIGNALS_UNAVAILABLE",
+                    "message" to (exception.message ?: "Play Age Signals is unavailable."),
+                    "checkedAtMillis" to System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    private fun ageSignalsStatusName(status: Int?): String? {
+        return when (status) {
+            null -> null
+            AgeSignalsVerificationStatus.VERIFIED -> "VERIFIED"
+            AgeSignalsVerificationStatus.SUPERVISED -> "SUPERVISED"
+            AgeSignalsVerificationStatus.SUPERVISED_APPROVAL_PENDING ->
+                "SUPERVISED_APPROVAL_PENDING"
+            AgeSignalsVerificationStatus.SUPERVISED_APPROVAL_DENIED ->
+                "SUPERVISED_APPROVAL_DENIED"
+            AgeSignalsVerificationStatus.UNKNOWN -> "UNKNOWN"
+            AgeSignalsVerificationStatus.DECLARED -> "DECLARED"
+            else -> "UNRECOGNIZED_$status"
+        }
+    }
+
+    private fun ageSignalsErrorName(errorCode: Int?): String? {
+        return when (errorCode) {
+            null -> null
+            AgeSignalsErrorCode.API_NOT_AVAILABLE -> "API_NOT_AVAILABLE"
+            AgeSignalsErrorCode.PLAY_STORE_NOT_FOUND -> "PLAY_STORE_NOT_FOUND"
+            AgeSignalsErrorCode.NETWORK_ERROR -> "NETWORK_ERROR"
+            AgeSignalsErrorCode.PLAY_SERVICES_NOT_FOUND -> "PLAY_SERVICES_NOT_FOUND"
+            AgeSignalsErrorCode.CANNOT_BIND_TO_SERVICE -> "CANNOT_BIND_TO_SERVICE"
+            AgeSignalsErrorCode.PLAY_STORE_VERSION_OUTDATED -> "PLAY_STORE_VERSION_OUTDATED"
+            AgeSignalsErrorCode.PLAY_SERVICES_VERSION_OUTDATED ->
+                "PLAY_SERVICES_VERSION_OUTDATED"
+            AgeSignalsErrorCode.CLIENT_TRANSIENT_ERROR -> "CLIENT_TRANSIENT_ERROR"
+            AgeSignalsErrorCode.APP_NOT_OWNED -> "APP_NOT_OWNED"
+            AgeSignalsErrorCode.SDK_VERSION_OUTDATED -> "SDK_VERSION_OUTDATED"
+            AgeSignalsErrorCode.INTERNAL_ERROR -> "INTERNAL_ERROR"
+            else -> "UNKNOWN_ERROR_$errorCode"
+        }
     }
 
     private fun installApk(path: String): String? {

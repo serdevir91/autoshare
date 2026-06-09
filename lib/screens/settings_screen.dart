@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import '../services/age_signals_service.dart';
 import '../services/storage_service.dart';
 import '../services/transfer_service.dart';
 import '../services/update_service.dart';
@@ -24,13 +25,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _nameController;
   late TextEditingController _portController;
   late TextEditingController _downloadPathController;
+  bool _isCheckingAgeSignals = false;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.storageService.deviceName);
-    _portController = TextEditingController(text: widget.storageService.devicePort.toString());
-    _downloadPathController = TextEditingController(text: widget.storageService.rootPath);
+    _nameController = TextEditingController(
+      text: widget.storageService.deviceName,
+    );
+    _portController = TextEditingController(
+      text: widget.storageService.devicePort.toString(),
+    );
+    _downloadPathController = TextEditingController(
+      text: widget.storageService.rootPath,
+    );
   }
 
   @override
@@ -101,7 +109,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   SnackBar(content: Text('Pairing with $name removed.')),
                 );
               },
-              child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+              child: const Text(
+                'Remove',
+                style: TextStyle(color: Colors.redAccent),
+              ),
             ),
           ],
         );
@@ -115,9 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final pairedDevices = widget.storageService.getPairedDevices();
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -134,14 +143,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               // Device Name TextField
               TextFormField(
                 controller: _nameController,
                 decoration: InputDecoration(
                   labelText: 'Device Name',
                   helperText: 'The name other devices on the network will see.',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   prefixIcon: const Icon(Icons.badge_rounded),
                 ),
                 validator: (value) {
@@ -159,8 +170,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   labelText: 'Port',
-                  helperText: 'Default: 53843. Only change if there is a conflict.',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  helperText:
+                      'Default: 53843. Only change if there is a conflict.',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   prefixIcon: const Icon(Icons.settings_ethernet_rounded),
                 ),
                 validator: (value) {
@@ -187,7 +201,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       decoration: InputDecoration(
                         labelText: 'Download Folder',
                         helperText: 'Incoming files will be saved here.',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         prefixIcon: const Icon(Icons.folder_shared_rounded),
                       ),
                     ),
@@ -200,7 +216,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       icon: const Icon(Icons.folder_open_rounded),
                       label: const Text('Browse'),
                       style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                   ),
@@ -215,13 +233,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: ElevatedButton.icon(
                   onPressed: _saveSettings,
                   icon: const Icon(Icons.save_rounded),
-                  label: const Text('Save Settings', style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: const Text(
+                    'Save Settings',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-              
+
               if (Platform.isWindows || Platform.isAndroid) ...[
                 const SizedBox(height: 24),
                 Text(
@@ -241,9 +264,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       UpdateService.check(context, showUpToDate: true);
                     },
                     icon: const Icon(Icons.update_rounded),
-                    label: const Text('Check for Updates', style: TextStyle(fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'Check for Updates',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (Platform.isAndroid) ...[
+                const SizedBox(height: 24),
+                Text(
+                  'Play Age Signals',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: _isCheckingAgeSignals
+                        ? null
+                        : () async {
+                            setState(() {
+                              _isCheckingAgeSignals = true;
+                            });
+                            await AgeSignalsService.checkAndShow(context);
+                            if (mounted) {
+                              setState(() {
+                                _isCheckingAgeSignals = false;
+                              });
+                            }
+                          },
+                    icon: _isCheckingAgeSignals
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.verified_user_rounded),
+                    label: const Text(
+                      'Check Age Signals',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                   ),
                 ),
@@ -262,7 +337,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 8),
               if (pairedDevices.isEmpty)
                 Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: const Padding(
                     padding: EdgeInsets.all(16.0),
                     child: Center(
@@ -281,21 +358,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   itemBuilder: (context, index) {
                     final device = pairedDevices[index];
                     return Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       margin: const EdgeInsets.only(bottom: 8.0),
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                          backgroundColor:
+                              theme.colorScheme.surfaceContainerHighest,
                           child: Icon(
-                            device.type == 'pc' ? Icons.computer : Icons.phone_android,
+                            device.type == 'pc'
+                                ? Icons.computer
+                                : Icons.phone_android,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                         ),
-                        title: Text(device.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: Text(
+                          device.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         subtitle: Text('ID: ${device.id.substring(0, 8)}...'),
                         trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                          onPressed: () => _removePairedDevice(device.id, device.name),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: Colors.redAccent,
+                          ),
+                          onPressed: () =>
+                              _removePairedDevice(device.id, device.name),
                         ),
                       ),
                     );

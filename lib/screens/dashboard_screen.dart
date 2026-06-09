@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import '../models/device_node.dart';
+import '../services/age_signals_service.dart';
 import '../services/discovery_service.dart';
 import '../services/transfer_service.dart';
 import '../services/storage_service.dart';
@@ -47,6 +48,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (Platform.isWindows || Platform.isAndroid) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         UpdateService.check(context);
+      });
+    }
+
+    if (Platform.isAndroid) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        AgeSignalsService.checkOnStartup(context);
       });
     }
 
@@ -152,10 +159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           finalStatus.status == TransferState.completed &&
           finalStatus.isIncoming &&
           finalStatus.filePath != null) {
-        _showFileReceivedSnackBar(
-          finalStatus.fileName,
-          finalStatus.filePath!,
-        );
+        _showFileReceivedSnackBar(finalStatus.fileName, finalStatus.filePath!);
       }
     });
   }
@@ -181,8 +185,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
-
-
 
   Future<void> _pickAndSendFile(DeviceNode device) async {
     final result = await FilePicker.pickFiles(allowMultiple: false);
@@ -236,7 +238,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SnackBar(content: Text('Pairing with $name removed.')),
                 );
               },
-              child: const Text('Remove', style: TextStyle(color: Colors.redAccent)),
+              child: const Text(
+                'Remove',
+                style: TextStyle(color: Colors.redAccent),
+              ),
             ),
           ],
         );
@@ -420,12 +425,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     color: Colors.redAccent,
                                   ),
                                   tooltip: 'Unpair Device',
-                                  onPressed: () => _removePairedDevice(peer.id, peer.name),
+                                  onPressed: () =>
+                                      _removePairedDevice(peer.id, peer.name),
                                 ),
                                 if (isOnline) ...[
                                   const SizedBox(width: 8),
                                   ElevatedButton.icon(
-                                    onPressed: () => _pickAndSendFile(freshPeer),
+                                    onPressed: () =>
+                                        _pickAndSendFile(freshPeer),
                                     icon: const Icon(
                                       Icons.send_rounded,
                                       size: 16,
@@ -630,9 +637,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Card(
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 24.0),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
@@ -702,13 +707,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Could not open download page.'),
+                                    content: Text(
+                                      'Could not open download page.',
+                                    ),
                                   ),
                                 );
                               }
                             }
                           },
-                          icon: const Icon(Icons.open_in_browser_rounded, size: 18),
+                          icon: const Icon(
+                            Icons.open_in_browser_rounded,
+                            size: 18,
+                          ),
                           label: const Text('Download Portal'),
                           style: FilledButton.styleFrom(
                             shape: RoundedRectangleBorder(
@@ -841,7 +851,8 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
         _status = status;
       });
 
-      if (status.status == TransferState.completed || status.status == TransferState.failed) {
+      if (status.status == TransferState.completed ||
+          status.status == TransferState.failed) {
         _subscription?.cancel();
         _subscription = null;
         _closeDialogWithDelay(status);
@@ -849,7 +860,8 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
     });
 
     // Handle case where initial status is already completed or failed
-    if (_status.status == TransferState.completed || _status.status == TransferState.failed) {
+    if (_status.status == TransferState.completed ||
+        _status.status == TransferState.failed) {
       _subscription?.cancel();
       _subscription = null;
       _closeDialogWithDelay(_status);
@@ -861,8 +873,16 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
     _isClosing = true;
 
     Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        Navigator.of(context).pop(finalStatus);
+      if (!mounted) return;
+
+      final route = ModalRoute.of(context);
+      if (route != null && route.isActive) {
+        // Remove this specific dialog route so we don't accidentally pop
+        // a page that may have been pushed from a notification tap.
+        Navigator.of(context, rootNavigator: true).removeRoute<TransferStatus>(
+          route as Route<TransferStatus>,
+          finalStatus,
+        );
       }
     });
   }
@@ -893,9 +913,7 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
     return PopScope(
       canPop: false,
       child: AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -919,11 +937,7 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
                 ),
               ),
             ] else if (isDone) ...[
-              const Icon(
-                Icons.check_circle,
-                color: Colors.green,
-                size: 80,
-              ),
+              const Icon(Icons.check_circle, color: Colors.green, size: 80),
               const SizedBox(height: 24),
               const Text(
                 'Transfer Complete',
@@ -956,10 +970,7 @@ class _TransferProgressDialogState extends State<TransferProgressDialog> {
             if (status.status == TransferState.running)
               Text(
                 '${_formatSize(status.bytesTransferred)} / ${_formatSize(status.fileSize)} (%${(status.progress * 100).toInt()})',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
               ),
             const SizedBox(height: 10),
           ],

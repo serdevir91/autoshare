@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UpdateService {
   // Current app version matching pubspec.yaml
-  static const String currentVersion = '1.0.4';
+  static const String currentVersion = '1.0.6';
   static const String repoUrl = 'https://api.github.com/repos/serdevir91/autoshare/releases/latest';
 
   // Compare simple semantic version strings (e.g. 1.0.2 vs 1.0.3)
