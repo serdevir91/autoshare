@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import '../models/device_node.dart';
 import '../services/age_signals_service.dart';
@@ -187,26 +186,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _pickAndSendFile(DeviceNode device) async {
-    final result = await FilePicker.pickFiles(allowMultiple: false);
-    if (result == null || result.files.single.path == null) return;
+    final result = await FilePicker.pickFiles(allowMultiple: true);
+    if (!mounted) return;
+    if (result == null || result.files.isEmpty) return;
 
-    final file = File(result.files.single.path!);
+    final files = result.files
+        .map((f) => f.path != null ? File(f.path!) : null)
+        .whereType<File>()
+        .toList();
+    if (files.isEmpty) return;
 
-    try {
-      await widget.transferService.sendFile(device, file);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    int successCount = 0;
+    int failCount = 0;
+
+    for (final file in files) {
+      try {
+        await widget.transferService.sendFile(device, file);
+        successCount++;
+      } catch (e) {
+        debugPrint('Failed to send ${file.path}: $e');
+        failCount++;
+      }
+    }
+
+    if (mounted) {
+      if (failCount == 0) {
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('${p.basename(file.path)} sent successfully!'),
+            content: Text('All $successCount files sent successfully to ${device.name}!'),
           ),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      } else if (successCount == 0) {
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('File send failed: $e'),
+            content: Text('Failed to send $failCount files to ${device.name}.'),
             backgroundColor: Colors.redAccent,
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Sent $successCount files. Failed to send $failCount files to ${device.name}.'),
+            backgroundColor: Colors.orange,
           ),
         );
       }
@@ -284,8 +306,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (context) =>
-                      FileManagerScreen(storageService: widget.storageService),
+                  builder: (context) => FileManagerScreen(
+                    storageService: widget.storageService,
+                    discoveryService: widget.discoveryService,
+                    transferService: widget.transferService,
+                  ),
                 ),
               );
             },

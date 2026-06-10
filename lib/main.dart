@@ -12,12 +12,36 @@ import 'services/transfer_service.dart';
 // Global key for navigating from outside widget contexts (e.g. notification clicks)
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
+// Global notifier for theme settings in AutoShare
+final ValueNotifier<({ThemeMode themeMode, bool isAmoled})> themeNotifier = ValueNotifier(
+  (themeMode: ThemeMode.system, isAmoled: false),
+);
+
+ThemeMode _parseThemeMode(String modeStr) {
+  switch (modeStr) {
+    case 'light':
+      return ThemeMode.light;
+    case 'dark':
+      return ThemeMode.dark;
+    case 'system':
+    default:
+      return ThemeMode.system;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize storage first
   final storageService = StorageService();
   await storageService.init();
+
+  // Load initial theme settings
+  final initialModeStr = storageService.themeMode;
+  final initialBgStr = storageService.backgroundMode;
+  final initialThemeMode = _parseThemeMode(initialModeStr);
+  final initialIsAmoled = initialBgStr == 'pure_black';
+  themeNotifier.value = (themeMode: initialThemeMode, isAmoled: initialIsAmoled);
 
   // Initialize notifications
   final notificationService = NotificationService();
@@ -96,6 +120,8 @@ class _AutoShareAppState extends State<AutoShareApp> {
         builder: (context) => FileManagerScreen(
           storageService: widget.storageService,
           highlightFilePath: filePath,
+          discoveryService: widget.discoveryService,
+          transferService: widget.transferService,
         ),
       ),
     );

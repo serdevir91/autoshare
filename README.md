@@ -24,7 +24,7 @@
 | 🤝 **Secure Pairing** | One-time token-based pairing system |
 | 📁 **Auto Accept** | Files from paired devices are accepted automatically |
 | 🔔 **Notifications** | Push notification when transfer completes |
-| 📂 **Built-in File Manager** | View, delete, move, or share received files |
+| 📂 **Built-in File Manager** | View, delete, move, share, or send single/multiple files directly to paired devices |
 | 🖥️ **Cross Platform** | Android and Windows support |
 | 🌐 **Hotspot Support** | Works on mobile hotspot networks |
 | 🔄 **Auto Update** | Automatically checks for updates on startup (Android & Windows) |

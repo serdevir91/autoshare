@@ -15,6 +15,12 @@ class StorageService {
   static const String _keyDevicePort = 'device_port';
   static const String _keyPairedDevices = 'paired_devices';
   static const String _keyShowWindowsBanner = 'show_windows_banner';
+  static const String _keyThemeMode = 'theme_mode';
+  static const String _keyBackgroundMode = 'background_mode';
+  static const String _keyRateReviewCompleted = 'rate_review_completed';
+  static const String _keyRateReviewNeverShow = 'rate_review_never_show';
+  static const String _keyRateReviewTransferCount = 'rate_review_transfer_count';
+  static const String _keyRateReviewLastPromptCount = 'rate_review_last_prompt_count';
 
   late SharedPreferences _prefs;
   late Directory _rootDir;
@@ -276,5 +282,38 @@ class StorageService {
 
   Future<void> setShowWindowsBanner(bool show) async {
     await _prefs.setBool(_keyShowWindowsBanner, show);
+  }
+
+  // Theme Mode
+  String get themeMode => _prefs.getString(_keyThemeMode) ?? 'system';
+  Future<void> setThemeMode(String mode) async {
+    await _prefs.setString(_keyThemeMode, mode);
+  }
+
+  // Background Mode (amoled vs default)
+  String get backgroundMode => _prefs.getString(_keyBackgroundMode) ?? 'default';
+  Future<void> setBackgroundMode(String mode) async {
+    await _prefs.setString(_keyBackgroundMode, mode);
+  }
+
+  // Rate & Review
+  bool get isRateReviewCompleted => _prefs.getBool(_keyRateReviewCompleted) ?? false;
+  Future<void> setRateReviewCompleted(bool val) async {
+    await _prefs.setBool(_keyRateReviewCompleted, val);
+  }
+
+  bool get neverShowRateReview => _prefs.getBool(_keyRateReviewNeverShow) ?? false;
+  Future<void> setNeverShowRateReview(bool val) async {
+    await _prefs.setBool(_keyRateReviewNeverShow, val);
+  }
+
+  int get rateReviewTransferCount => _prefs.getInt(_keyRateReviewTransferCount) ?? 0;
+  Future<void> setRateReviewTransferCount(int val) async {
+    await _prefs.setInt(_keyRateReviewTransferCount, val);
+  }
+
+  int get rateReviewLastPromptCount => _prefs.getInt(_keyRateReviewLastPromptCount) ?? 0;
+  Future<void> setRateReviewLastPromptCount(int val) async {
+    await _prefs.setInt(_keyRateReviewLastPromptCount, val);
   }
 }
