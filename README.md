@@ -134,6 +134,13 @@ flutter build windows
 - Transfers from unpaired devices are automatically rejected
 - **Play Age Signals Integration (Android)**: Checks for parental approval on startup and settings, blocking application access if parent consent was denied for supervised accounts.
 
+## 🔄 Changelog
+
+### v1.0.8
+- Consolidated multi-file sending progress into a single unified bar.
+- Integrated `PackageInfo` for dynamic version detection.
+- Fixed update dialog redirection on Android (Play Store installs now correctly route to Google Play Store).
+
 ## 📄 License
 
 This project is licensed under the MIT License.

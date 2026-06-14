@@ -197,37 +197,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (files.isEmpty) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    int successCount = 0;
-    int failCount = 0;
-
-    for (final file in files) {
-      try {
-        await widget.transferService.sendFile(device, file);
-        successCount++;
-      } catch (e) {
-        debugPrint('Failed to send ${file.path}: $e');
-        failCount++;
-      }
-    }
+    final batchResult = await widget.transferService.sendFiles(device, files);
 
     if (mounted) {
-      if (failCount == 0) {
+      if (batchResult.failCount == 0) {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('All $successCount files sent successfully to ${device.name}!'),
+            content: Text('All ${batchResult.successCount} files sent successfully to ${device.name}!'),
           ),
         );
-      } else if (successCount == 0) {
+      } else if (batchResult.successCount == 0) {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Failed to send $failCount files to ${device.name}.'),
+            content: Text('Failed to send ${batchResult.failCount} files to ${device.name}.'),
             backgroundColor: Colors.redAccent,
           ),
         );
       } else {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Sent $successCount files. Failed to send $failCount files to ${device.name}.'),
+            content: Text('Sent ${batchResult.successCount} files. Failed to send ${batchResult.failCount} files to ${device.name}.'),
             backgroundColor: Colors.orange,
           ),
         );

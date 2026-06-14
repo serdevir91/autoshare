@@ -44,6 +44,13 @@ class PairRequestEvent {
   PairRequestEvent(this.sender, this.callback);
 }
 
+class BatchTransferResult {
+  final int successCount;
+  final int failCount;
+
+  BatchTransferResult(this.successCount, this.failCount);
+}
+
 class TransferService extends ChangeNotifier {
   final StorageService _storageService;
   final NotificationService _notificationService = NotificationService();
@@ -337,83 +344,127 @@ class TransferService extends ChangeNotifier {
     return false;
   }
 
-  // CLIENT METHOD: Send file to a paired peer
-  Future<void> sendFile(DeviceNode target, File file) async {
+  // CLIENT METHOD: Send multiple files to a paired peer with unified progress
+  Future<BatchTransferResult> sendFiles(DeviceNode target, List<File> files) async {
     if (target.pairToken == null) {
       throw Exception('Device is not paired or missing pair token');
     }
 
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 10);
+    if (files.isEmpty) {
+      return BatchTransferResult(0, 0);
+    }
 
-    final fileName = p.basename(file.path);
-    final fileSize = await file.length();
+    // Compute total size of all files
+    int totalSize = 0;
+    final List<int> fileSizes = [];
+    for (final file in files) {
+      try {
+        final size = await file.length();
+        fileSizes.add(size);
+        totalSize += size;
+      } catch (e) {
+        debugPrint('Failed to get size for ${file.path}: $e');
+        fileSizes.add(0);
+      }
+    }
 
+    int successCount = 0;
+    int failCount = 0;
+    int totalBytesSentSoFar = 0;
+
+    final firstFileName = p.basename(files.first.path);
     _transferStatusStreamController.add(TransferStatus(
-      fileName: fileName,
-      fileSize: fileSize,
+      fileName: files.length == 1 
+          ? firstFileName 
+          : '${files.length} files ($firstFileName)',
+      fileSize: totalSize,
       bytesTransferred: 0,
       isIncoming: false,
       senderName: target.name,
       status: TransferState.running,
     ));
 
-    try {
-      final request = await client.post(target.ip, target.port, '/api/transfer');
-      
-      request.headers.add('x-sender-id', _storageService.deviceId);
-      request.headers.add('x-pair-token', target.pairToken!);
-      request.headers.add('x-file-name', Uri.encodeComponent(fileName));
-      request.headers.add('x-file-size', fileSize.toString());
+    for (int i = 0; i < files.length; i++) {
+      final file = files[i];
+      final fileSize = fileSizes[i];
+      final fileName = p.basename(file.path);
 
-      final fileStream = file.openRead();
-      int bytesSent = 0;
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
 
-      final progressStream = fileStream.transform(
-        StreamTransformer<List<int>, List<int>>.fromHandlers(
-          handleData: (data, sink) {
-            bytesSent += data.length;
-            _transferStatusStreamController.add(TransferStatus(
-              fileName: fileName,
-              fileSize: fileSize,
-              bytesTransferred: bytesSent,
-              isIncoming: false,
-              senderName: target.name,
-              status: TransferState.running,
-            ));
-            sink.add(data);
-          },
-        ),
-      );
+      try {
+        final request = await client.post(target.ip, target.port, '/api/transfer');
+        
+        request.headers.add('x-sender-id', _storageService.deviceId);
+        request.headers.add('x-pair-token', target.pairToken!);
+        request.headers.add('x-file-name', Uri.encodeComponent(fileName));
+        request.headers.add('x-file-size', fileSize.toString());
 
-      await request.addStream(progressStream);
-      final response = await request.close();
+        final fileStream = file.openRead();
+        int bytesSentInCurrentFile = 0;
 
-      if (response.statusCode == HttpStatus.ok) {
-        _transferStatusStreamController.add(TransferStatus(
-          fileName: fileName,
-          fileSize: fileSize,
-          bytesTransferred: fileSize,
-          isIncoming: false,
-          senderName: target.name,
-          status: TransferState.completed,
-        ));
-      } else {
-        throw Exception('Server rejected transfer: ${response.statusCode}');
+        final progressStream = fileStream.transform(
+          StreamTransformer<List<int>, List<int>>.fromHandlers(
+            handleData: (data, sink) {
+              bytesSentInCurrentFile += data.length;
+              final currentProgressBytes = totalBytesSentSoFar + bytesSentInCurrentFile;
+              
+              _transferStatusStreamController.add(TransferStatus(
+                fileName: files.length == 1 
+                    ? fileName 
+                    : '${files.length} files ($fileName)',
+                fileSize: totalSize,
+                bytesTransferred: currentProgressBytes,
+                isIncoming: false,
+                senderName: target.name,
+                status: TransferState.running,
+              ));
+              sink.add(data);
+            },
+          ),
+        );
+
+        await request.addStream(progressStream);
+        final response = await request.close();
+
+        if (response.statusCode == HttpStatus.ok) {
+          successCount++;
+        } else {
+          failCount++;
+          debugPrint('Server rejected transfer of $fileName: ${response.statusCode}');
+        }
+      } catch (e) {
+        debugPrint('File sending error for $fileName: $e');
+        failCount++;
+      } finally {
+        client.close();
+        totalBytesSentSoFar += fileSize; // Keep accumulated count updated
       }
-    } catch (e) {
-      debugPrint('File sending error: $e');
-      _transferStatusStreamController.add(TransferStatus(
-        fileName: fileName,
-        fileSize: fileSize,
-        bytesTransferred: 0,
-        isIncoming: false,
-        senderName: target.name,
-        status: TransferState.failed,
-      ));
-      rethrow;
-    } finally {
-      client.close();
+    }
+
+    final finalState = failCount == files.length 
+        ? TransferState.failed 
+        : TransferState.completed;
+
+    _transferStatusStreamController.add(TransferStatus(
+      fileName: files.length == 1 
+          ? p.basename(files.first.path) 
+          : '${files.length} files',
+      fileSize: totalSize,
+      bytesTransferred: totalSize,
+      isIncoming: false,
+      senderName: target.name,
+      status: finalState,
+    ));
+
+    return BatchTransferResult(successCount, failCount);
+  }
+
+  // CLIENT METHOD: Send single file to a paired peer (re-routed through sendFiles)
+  Future<void> sendFile(DeviceNode target, File file) async {
+    final result = await sendFiles(target, [file]);
+    if (result.failCount > 0) {
+      throw Exception('Failed to send file: ${p.basename(file.path)}');
     }
   }
 

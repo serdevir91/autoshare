@@ -586,19 +586,7 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
   Future<void> _sendFilesSequentially(DeviceNode target, List<File> files) async {
     final messenger = ScaffoldMessenger.of(context);
-    int successCount = 0;
-    int failCount = 0;
-
-    for (int i = 0; i < files.length; i++) {
-      final file = files[i];
-      try {
-        await widget.transferService!.sendFile(target, file);
-        successCount++;
-      } catch (e) {
-        debugPrint('Failed to send ${file.path}: $e');
-        failCount++;
-      }
-    }
+    final batchResult = await widget.transferService!.sendFiles(target, files);
 
     if (mounted) {
       // Clear selection after transfer initiates
@@ -606,23 +594,23 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
         _selectedFiles.clear();
       });
 
-      if (failCount == 0) {
+      if (batchResult.failCount == 0) {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('All $successCount files sent successfully to ${target.name}!'),
+            content: Text('All ${batchResult.successCount} files sent successfully to ${target.name}!'),
           ),
         );
-      } else if (successCount == 0) {
+      } else if (batchResult.successCount == 0) {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Failed to send $failCount files to ${target.name}.'),
+            content: Text('Failed to send ${batchResult.failCount} files to ${target.name}.'),
             backgroundColor: Colors.redAccent,
           ),
         );
       } else {
         messenger.showSnackBar(
           SnackBar(
-            content: Text('Sent $successCount files. Failed to send $failCount files to ${target.name}.'),
+            content: Text('Sent ${batchResult.successCount} files. Failed to send ${batchResult.failCount} files to ${target.name}.'),
             backgroundColor: Colors.orange,
           ),
         );

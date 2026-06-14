@@ -3,10 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class UpdateService {
-  // Current app version matching pubspec.yaml
-  static const String currentVersion = '1.0.6';
   static const String repoUrl = 'https://api.github.com/repos/serdevir91/autoshare/releases/latest';
 
   // Compare simple semantic version strings (e.g. 1.0.2 vs 1.0.3)
@@ -31,6 +30,19 @@ class UpdateService {
   static Future<void> check(BuildContext context, {bool showUpToDate = false}) async {
     if (!Platform.isWindows && !Platform.isAndroid) return;
 
+    String currentVer = '1.0.7';
+    String? installerStore;
+    String packageName = 'com.autoshare.app';
+
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      currentVer = packageInfo.version;
+      installerStore = packageInfo.installerStore;
+      packageName = packageInfo.packageName;
+    } catch (e) {
+      debugPrint('Failed to get package info: $e');
+    }
+
     final client = HttpClient();
     client.userAgent = 'AutoShare-Updater';
     client.connectionTimeout = const Duration(seconds: 8);
@@ -47,13 +59,21 @@ class UpdateService {
         final releaseName = json['name'] as String? ?? latestTag;
         final bodyText = json['body'] as String? ?? 'Bug fixes and performance improvements.';
 
-        if (_isNewerVersion(currentVersion, latestTag)) {
+        if (_isNewerVersion(currentVer, latestTag)) {
           if (context.mounted) {
-            _showUpdateDialog(context, latestTag, releaseName, bodyText);
+            _showUpdateDialog(
+              context,
+              latestTag,
+              releaseName,
+              bodyText,
+              currentVer,
+              installerStore,
+              packageName,
+            );
           }
         } else if (showUpToDate) {
           if (context.mounted) {
-            _showUpToDateDialog(context);
+            _showUpToDateDialog(context, currentVer);
           }
         }
       } else if (showUpToDate) {
@@ -70,7 +90,7 @@ class UpdateService {
     }
   }
 
-  static void _showUpToDateDialog(BuildContext context) {
+  static void _showUpToDateDialog(BuildContext context, String currentVersion) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -82,7 +102,7 @@ class UpdateService {
             Text('Up to Date'),
           ],
         ),
-        content: const Text('You are using the latest version of AutoShare (v$currentVersion).'),
+        content: Text('You are using the latest version of AutoShare (v$currentVersion).'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -121,6 +141,9 @@ class UpdateService {
     String latestTag,
     String releaseName,
     String changelog,
+    String currentVersion,
+    String? installerStore,
+    String packageName,
   ) {
     showDialog(
       context: context,
@@ -181,7 +204,9 @@ class UpdateService {
                 if (Platform.isWindows) {
                   _performUpdate(context);
                 } else {
-                  final url = Uri.parse('https://github.com/serdevir91/autoshare/releases/latest');
+                  final url = installerStore == 'com.android.vending'
+                      ? Uri.parse('https://play.google.com/store/apps/details?id=$packageName')
+                      : Uri.parse('https://github.com/serdevir91/autoshare/releases/latest');
                   if (await canLaunchUrl(url)) {
                     await launchUrl(
                       url,
