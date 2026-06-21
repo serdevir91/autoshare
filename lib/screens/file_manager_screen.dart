@@ -10,11 +10,14 @@ import '../services/storage_service.dart';
 import '../services/discovery_service.dart';
 import '../services/transfer_service.dart';
 
+enum FileCategory { all, image, video, audio, document }
+
 class FileManagerScreen extends StatefulWidget {
   final StorageService storageService;
   final String? highlightFilePath;
   final DiscoveryService? discoveryService;
   final TransferService? transferService;
+  final bool isPickerMode;
 
   const FileManagerScreen({
     super.key,
@@ -22,6 +25,7 @@ class FileManagerScreen extends StatefulWidget {
     this.highlightFilePath,
     this.discoveryService,
     this.transferService,
+    this.isPickerMode = false,
   });
 
   @override
@@ -36,6 +40,19 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   List<SharedFile> _files = [];
   String? _highlightedFile;
   final Set<SharedFile> _selectedFiles = {};
+
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  FileCategory _selectedCategory = FileCategory.all;
+  bool _isRecursiveSearch = false;
+  bool _isSearchingProgress = false;
+  List<SharedFile> _recursiveSearchResults = [];
+
+  final List<String> _backHistory = [];
+  final List<String> _forwardHistory = [];
+  bool _isCategorySystemWide = true;
+  bool _isPathEditing = false;
+  final TextEditingController _pathEditController = TextEditingController();
 
   bool get _isSelectionMode => _selectedFiles.isNotEmpty;
 
@@ -69,6 +86,13 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     _refreshRootIfNeeded();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _pathEditController.dispose();
+    super.dispose();
+  }
+
   Future<void> _refreshRootIfNeeded() async {
     if (!Platform.isAndroid) return;
 
@@ -86,58 +110,443 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
   }
 
   void _refreshFiles() {
+    if (_selectedCategory != FileCategory.all) {
+      _loadCategoryFiles();
+    } else if (_isRecursiveSearch && _searchQuery.isNotEmpty) {
+      _performRecursiveSearch(_searchQuery);
+    } else {
+      setState(() {
+        _isSearchingProgress = false;
+        if (Platform.isWindows && _currentPath == 'Computer') {
+          _files = widget.storageService.getWindowsDrives();
+        } else {
+          _files = widget.storageService.listFiles(_currentPath);
+        }
+      });
+    }
+  }
+
+  bool _isAtRoot() {
+    if (Platform.isWindows) {
+      return _currentPath == 'Computer';
+    }
+    return _currentPath == widget.storageService.rootPath;
+  }
+
+  void _goHistoryBack() {
+    if (_backHistory.isEmpty) return;
     setState(() {
-      if (Platform.isWindows && _currentPath == 'Computer') {
-        _files = widget.storageService.getWindowsDrives();
-      } else {
-        _files = widget.storageService.listFiles(_currentPath);
-      }
+      _forwardHistory.add(_currentPath);
+      _currentPath = _backHistory.removeLast();
+      _selectedFiles.clear();
+      _highlightedFile = null;
+      _isPathEditing = false;
     });
+    _refreshFiles();
+  }
+
+  void _goHistoryForward() {
+    if (_forwardHistory.isEmpty) return;
+    setState(() {
+      _backHistory.add(_currentPath);
+      _currentPath = _forwardHistory.removeLast();
+      _selectedFiles.clear();
+      _highlightedFile = null;
+      _isPathEditing = false;
+    });
+    _refreshFiles();
+  }
+
+  void _navigateUpToParent() {
+    if (_isAtRoot()) return;
+    
+    final nextPath = Platform.isWindows
+        ? (_currentPath == 'Computer' ? 'Computer' : (Directory(_currentPath).parent.path == _currentPath ? 'Computer' : Directory(_currentPath).parent.path))
+        : (Directory(_currentPath).parent.path);
+        
+    setState(() {
+      _backHistory.add(_currentPath);
+      _forwardHistory.clear();
+      _currentPath = nextPath;
+      _selectedFiles.clear();
+      _highlightedFile = null;
+      _isPathEditing = false;
+    });
+    _refreshFiles();
   }
 
   void _navigateInto(String folderPath) {
+    if (folderPath == _currentPath) return;
     setState(() {
+      _backHistory.add(_currentPath);
+      _forwardHistory.clear(); // Clear forward history on new navigation
       _currentPath = folderPath;
       _highlightedFile = null; // Clear highlight on navigation
       _selectedFiles.clear(); // Clear selection on navigation
+      _searchController.clear();
+      _searchQuery = '';
+      _recursiveSearchResults.clear();
+      _isSearchingProgress = false;
+      _isPathEditing = false;
     });
     _refreshFiles();
   }
 
-  void _navigateUp() {
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query.trim();
+    });
+    _refreshFiles();
+  }
+
+  void _toggleRecursiveSearch() {
+    setState(() {
+      _isRecursiveSearch = !_isRecursiveSearch;
+    });
+    _refreshFiles();
+  }
+
+  bool _shouldSkipDirectory(String name, String parentPath) {
+    final lowerName = name.toLowerCase();
+    
+    // Skip hidden folders
+    if (name.startsWith('.')) return true;
+    
+    // Windows system/program folders at the root level of drive
     if (Platform.isWindows) {
-      if (_currentPath == 'Computer') {
-        Navigator.of(context).pop();
-        return;
+      final isDriveRoot = parentPath.endsWith(':\\') || parentPath.endsWith(':/') || parentPath == 'Computer';
+      if (isDriveRoot) {
+        const winSystemDirs = {
+          'windows',
+          'program files',
+          'program files (x86)',
+          'programdata',
+          '\$recycle.bin',
+          'system volume information',
+        };
+        if (winSystemDirs.contains(lowerName)) {
+          return true;
+        }
       }
-      final parentDir = Directory(_currentPath).parent;
-      if (parentDir.path == _currentPath) {
-        // We reached the absolute root (e.g. C:\)
-        setState(() {
-          _currentPath = 'Computer';
-          _highlightedFile = null;
-        });
-        _refreshFiles();
-        return;
+      
+      // Also skip AppData inside user profiles to prevent scanning deep local cache/config files
+      if (lowerName == 'appdata') {
+        return true;
       }
+    }
+    
+    // Android system folders
+    if (Platform.isAndroid) {
+      if (lowerName == 'android') {
+        if (parentPath == '/storage/emulated/0' || parentPath == '/storage/emulated/0/') {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  List<String> _resolveCategoryRoots() {
+    if (!_isCategorySystemWide) {
+      return [_currentPath];
+    }
+    final List<String> roots = [];
+    
+    if (Platform.isWindows) {
+      // Add user profile folders
+      final home = Platform.environment['USERPROFILE'];
+      if (home != null && home.isNotEmpty) {
+        roots.addAll([
+          p.join(home, 'Downloads'),
+          p.join(home, 'Documents'),
+          p.join(home, 'Pictures'),
+          p.join(home, 'Videos'),
+          p.join(home, 'Music'),
+          p.join(home, 'Desktop'),
+        ]);
+      }
+      
+      // Also get all windows drives and add any drive that is not C:\
+      final drives = widget.storageService.getWindowsDrives();
+      for (final drive in drives) {
+        final drivePath = drive.path; // e.g. "D:\"
+        final isCDrive = drivePath.toUpperCase().startsWith('C:');
+        if (!isCDrive) {
+          roots.add(drivePath);
+        }
+      }
+    } else if (Platform.isAndroid) {
+      roots.addAll([
+        '/storage/emulated/0/Download',
+        '/storage/emulated/0/Downloads',
+        '/storage/emulated/0/DCIM',
+        '/storage/emulated/0/Pictures',
+        '/storage/emulated/0/Documents',
+        '/storage/emulated/0/Movies',
+        '/storage/emulated/0/Music',
+      ]);
+      
+      // Also check for external SD card paths in Android (/storage/XXXX-XXXX)
+      try {
+        final storageDir = Directory('/storage');
+        if (storageDir.existsSync()) {
+          final list = storageDir.listSync();
+          for (final entity in list) {
+            if (entity is Directory) {
+              final name = p.basename(entity.path);
+              if (name != 'emulated' && name != 'self' && !name.startsWith('.')) {
+                roots.add(entity.path);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    } else {
+      roots.add(widget.storageService.rootPath);
+    }
+    
+    // Return unique existing folders
+    return roots
+        .where((path) => Directory(path).existsSync())
+        .toSet()
+        .toList();
+  }
+
+  Stream<FileSystemEntity> _listDirectoriesRecursive(List<String> paths) async* {
+    final List<Directory> dirsToScan = [];
+    for (final path in paths) {
+      final d = Directory(path);
+      if (d.existsSync()) {
+        dirsToScan.add(d);
+      }
+    }
+
+    while (dirsToScan.isNotEmpty) {
+      final currentDir = dirsToScan.removeAt(0);
+      Stream<FileSystemEntity> stream;
+      try {
+        stream = currentDir.list(recursive: false, followLinks: false);
+      } catch (e) {
+        continue;
+      }
+
+      List<FileSystemEntity> entities = [];
+      try {
+        entities = await stream.toList();
+      } catch (e) {
+        continue;
+      }
+
+      for (final entity in entities) {
+        final name = p.basename(entity.path);
+        
+        if (_shouldSkipDirectory(name, currentDir.path)) {
+          continue;
+        }
+
+        if (entity is Directory) {
+          dirsToScan.add(entity);
+        }
+        yield entity;
+      }
+    }
+  }
+
+  Future<void> _performRecursiveSearch(String query) async {
+    if (query.isEmpty) {
       setState(() {
-        _currentPath = parentDir.path;
-        _highlightedFile = null;
+        _recursiveSearchResults = [];
+        _isSearchingProgress = false;
       });
-      _refreshFiles();
       return;
     }
 
-    if (_currentPath == widget.storageService.rootPath) {
-      Navigator.of(context).pop();
-      return;
-    }
-    final parentDir = Directory(_currentPath).parent;
     setState(() {
-      _currentPath = parentDir.path;
-      _highlightedFile = null;
+      _isSearchingProgress = true;
+      _recursiveSearchResults = [];
     });
-    _refreshFiles();
+
+    try {
+      List<String> roots = [];
+      if (_currentPath == 'Computer') {
+        roots = widget.storageService.getWindowsDrives().map((f) => f.path).toList();
+      } else {
+        roots = [_currentPath];
+      }
+
+      final List<SharedFile> results = [];
+      int lastUpdate = DateTime.now().millisecondsSinceEpoch;
+
+      await for (final entity in _listDirectoriesRecursive(roots)) {
+        if (_searchQuery != query) {
+          return;
+        }
+
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          if (name.toLowerCase().contains(query.toLowerCase())) {
+            // Also check category filter if active
+            if (_selectedCategory != FileCategory.all) {
+              final ext = p.extension(entity.path).toLowerCase();
+              bool matchesCategory = false;
+              switch (_selectedCategory) {
+                case FileCategory.image:
+                  matchesCategory = const ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif', '.tiff', '.tif', '.svg', '.jfif', '.ico'].contains(ext);
+                  break;
+                case FileCategory.video:
+                  matchesCategory = const ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.3gp', '.wmv', '.mpeg', '.mpg', '.m4v', '.ts', '.mts', '.f4v'].contains(ext);
+                  break;
+                case FileCategory.audio:
+                  matchesCategory = const ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus', '.mid', '.midi', '.m4p'].contains(ext);
+                  break;
+                case FileCategory.document:
+                  matchesCategory = const ['.pdf', '.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.epub', '.rtf', '.html', '.xml', '.odt', '.ods', '.odp', '.pages', '.key', '.numbers'].contains(ext);
+                  break;
+                default:
+                  matchesCategory = true;
+              }
+              if (!matchesCategory) continue;
+            }
+
+            results.add(SharedFile.fromFileSystemEntity(entity));
+            
+            // Progressive UI update
+            final now = DateTime.now().millisecondsSinceEpoch;
+            if (results.length <= 10 || now - lastUpdate > 300) {
+              lastUpdate = now;
+              if (mounted && _searchQuery == query) {
+                setState(() {
+                  _recursiveSearchResults = List.from(results);
+                });
+              }
+            }
+
+            if (results.length >= 10000) {
+              break;
+            }
+          }
+        }
+      }
+
+      if (mounted && _searchQuery == query) {
+        setState(() {
+          _recursiveSearchResults = results;
+          _isSearchingProgress = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Recursive search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearchingProgress = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadCategoryFiles() async {
+    final query = _searchQuery;
+    final category = _selectedCategory;
+    final path = _currentPath;
+
+    setState(() {
+      _isSearchingProgress = true;
+      _files = [];
+    });
+
+    try {
+      final roots = _resolveCategoryRoots();
+      final List<SharedFile> results = [];
+      int lastUpdate = DateTime.now().millisecondsSinceEpoch;
+
+      await for (final entity in _listDirectoriesRecursive(roots)) {
+        if (_selectedCategory != category || _searchQuery != query || _currentPath != path) {
+          return;
+        }
+
+        if (entity is File) {
+          final name = p.basename(entity.path);
+          final ext = p.extension(entity.path).toLowerCase();
+
+          if (query.isNotEmpty && !name.toLowerCase().contains(query.toLowerCase())) {
+            continue;
+          }
+
+          bool matches = false;
+          switch (category) {
+            case FileCategory.image:
+              matches = const ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif', '.tiff', '.tif', '.svg', '.jfif', '.ico'].contains(ext);
+              break;
+            case FileCategory.video:
+              matches = const ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.3gp', '.wmv', '.mpeg', '.mpg', '.m4v', '.ts', '.mts', '.f4v'].contains(ext);
+              break;
+            case FileCategory.audio:
+              matches = const ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma', '.opus', '.mid', '.midi', '.m4p'].contains(ext);
+              break;
+            case FileCategory.document:
+              matches = const ['.pdf', '.txt', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.csv', '.epub', '.rtf', '.html', '.xml', '.odt', '.ods', '.odp', '.pages', '.key', '.numbers'].contains(ext);
+              break;
+            default:
+              matches = true;
+          }
+
+          if (matches) {
+            results.add(SharedFile.fromFileSystemEntity(entity));
+            
+            // Progressive UI update
+            final now = DateTime.now().millisecondsSinceEpoch;
+            if (results.length <= 10 || now - lastUpdate > 300) {
+              lastUpdate = now;
+              if (mounted && _selectedCategory == category && _searchQuery == query && _currentPath == path) {
+                setState(() {
+                  _files = List.from(results);
+                });
+              }
+            }
+
+            if (results.length >= 10000) {
+              break;
+            }
+          }
+        }
+      }
+
+      if (mounted && _selectedCategory == category && _searchQuery == query && _currentPath == path) {
+        setState(() {
+          _files = results;
+          _isSearchingProgress = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading category files: $e');
+      if (mounted) {
+        setState(() {
+          _isSearchingProgress = false;
+        });
+      }
+    }
+  }
+
+  List<SharedFile> get _filteredFiles {
+    if (_selectedCategory != FileCategory.all) {
+      return _files;
+    }
+    if (_isRecursiveSearch && _searchQuery.isNotEmpty) {
+      return _recursiveSearchResults;
+    }
+
+    List<SharedFile> list = _files;
+
+    // Apply search query filter if local search is active
+    if (_searchQuery.isNotEmpty) {
+      list = list.where((file) {
+        return file.name.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+
+    return list;
   }
 
   Future<void> _createFolder() async {
@@ -180,6 +589,44 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildFileLeading(SharedFile file, ThemeData theme) {
+    if (Platform.isWindows && file.path.endsWith(':\\')) {
+      return Icon(Icons.storage_rounded, color: theme.colorScheme.primary, size: 28);
+    }
+    if (file.isDirectory) {
+      return Icon(Icons.folder_rounded, color: Colors.amber.shade700, size: 28);
+    }
+
+    final ext = p.extension(file.path).toLowerCase();
+    final isImage = const ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].contains(ext);
+    
+    if (isImage) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          File(file.path),
+          width: 32,
+          height: 32,
+          fit: BoxFit.cover,
+          cacheWidth: 80,
+          errorBuilder: (context, error, stackTrace) {
+            return Icon(
+              Icons.image_rounded,
+              color: Colors.blue.shade600,
+              size: 28,
+            );
+          },
+        ),
+      );
+    }
+
+    return Icon(
+      _getFileIcon(file),
+      color: _getIconColor(file, theme),
+      size: 28,
     );
   }
 
@@ -836,6 +1283,46 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
     return crumbs;
   }
 
+  Widget _buildCategoryChip(
+    FileCategory category,
+    String label,
+    IconData icon,
+    Color activeColor,
+    ThemeData theme,
+  ) {
+    final isSelected = _selectedCategory == category;
+    return FilterChip(
+      selected: isSelected,
+      showCheckmark: false,
+      label: Text(label),
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: isSelected ? Colors.white : activeColor,
+      ),
+      onSelected: (selected) {
+        setState(() {
+          _selectedCategory = category;
+        });
+        if (_isRecursiveSearch && _searchQuery.isNotEmpty) {
+          _performRecursiveSearch(_searchQuery);
+        } else {
+          _refreshFiles();
+        }
+      },
+      selectedColor: theme.colorScheme.primary,
+      checkmarkColor: Colors.white,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : theme.colorScheme.onSurface,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -850,7 +1337,9 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_isSelectionMode ? '${_selectedFiles.length} selected' : 'File Manager'),
+          title: Text(_isSelectionMode
+              ? '${_selectedFiles.length} selected'
+              : (widget.isPickerMode ? 'Select Files' : 'File Manager')),
           leading: IconButton(
             icon: Icon(_isSelectionMode ? Icons.close_rounded : Icons.arrow_back_rounded),
             onPressed: _isSelectionMode
@@ -859,38 +1348,49 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                       _selectedFiles.clear();
                     });
                   }
-                : _navigateUp,
+                : () => Navigator.of(context).pop(),
           ),
           actions: _isSelectionMode
               ? [
-                  if (widget.transferService != null && widget.discoveryService != null)
+                  if (widget.isPickerMode)
                     IconButton(
-                      icon: const Icon(Icons.send_rounded),
-                      tooltip: 'Send to Device',
+                      icon: const Icon(Icons.check_rounded),
+                      tooltip: 'Select Files',
                       onPressed: () {
-                        if (_selectedFiles.any((f) => f.isDirectory)) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Cannot send folders. Please select files only.'),
-                              backgroundColor: Colors.redAccent,
-                            ),
-                          );
-                          return;
-                        }
                         final files = _selectedFiles.map((f) => File(f.path)).toList();
-                        _selectDeviceAndSend(files);
+                        Navigator.of(context).pop(files);
                       },
+                    )
+                  else ...[
+                    if (widget.transferService != null && widget.discoveryService != null)
+                      IconButton(
+                        icon: const Icon(Icons.send_rounded),
+                        tooltip: 'Send to Device',
+                        onPressed: () {
+                          if (_selectedFiles.any((f) => f.isDirectory)) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Cannot send folders. Please select files only.'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                            return;
+                          }
+                          final files = _selectedFiles.map((f) => File(f.path)).toList();
+                          _selectDeviceAndSend(files);
+                        },
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.drive_file_move_rounded),
+                      tooltip: 'Move Selected',
+                      onPressed: _moveSelectedFiles,
                     ),
-                  IconButton(
-                    icon: const Icon(Icons.drive_file_move_rounded),
-                    tooltip: 'Move Selected',
-                    onPressed: _moveSelectedFiles,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_rounded),
-                    tooltip: 'Delete Selected',
-                    onPressed: _deleteSelectedFiles,
-                  ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_rounded),
+                      tooltip: 'Delete Selected',
+                      onPressed: _deleteSelectedFiles,
+                    ),
+                  ]
                 ]
               : [
                   IconButton(
@@ -900,26 +1400,234 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
                   ),
                 ],
         ),
+        floatingActionButton: (widget.isPickerMode && _isSelectionMode)
+            ? FloatingActionButton.extended(
+                onPressed: () {
+                  final files = _selectedFiles.map((f) => File(f.path)).toList();
+                  Navigator.of(context).pop(files);
+                },
+                icon: const Icon(Icons.send_rounded),
+                label: Text('Send Selected (${_selectedFiles.length})'),
+              )
+            : null,
         body: Column(
           children: [
             // Breadcrumbs Bar
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               color: theme.colorScheme.surfaceContainerLow,
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.folder_open_rounded,
-                    size: 16,
-                    color: Colors.grey,
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded, size: 20),
+                    tooltip: 'Back',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _backHistory.isEmpty ? null : _goHistoryBack,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                    tooltip: 'Forward',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _forwardHistory.isEmpty ? null : _goHistoryForward,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+                    tooltip: 'Up to Parent',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _isAtRoot() ? null : _navigateUpToParent,
+                  ),
+                  const SizedBox(width: 4),
+                  const SizedBox(
+                    height: 24,
+                    child: VerticalDivider(width: 1, thickness: 1),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: _buildBreadcrumbs(theme),
+                    child: _isPathEditing
+                        ? TextField(
+                            controller: _pathEditController,
+                            autofocus: true,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              hintText: 'Enter directory path...',
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.close_rounded, size: 16),
+                                onPressed: () {
+                                  setState(() {
+                                    _isPathEditing = false;
+                                  });
+                                },
+                              ),
+                            ),
+                            onSubmitted: (val) {
+                              final trimmed = val.trim();
+                              if (trimmed.isNotEmpty) {
+                                if (trimmed == 'Computer') {
+                                  _navigateInto('Computer');
+                                } else {
+                                  final dir = Directory(trimmed);
+                                  if (dir.existsSync()) {
+                                    _navigateInto(dir.path);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Directory does not exist.'),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                              setState(() {
+                                _isPathEditing = false;
+                              });
+                            },
+                          )
+                        : GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _isPathEditing = true;
+                                _pathEditController.text = _currentPath;
+                              });
+                            },
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: _buildBreadcrumbs(theme),
+                              ),
+                            ),
+                          ),
+                  ),
+                  if (!_isPathEditing)
+                    IconButton(
+                      icon: const Icon(Icons.edit_rounded, size: 16),
+                      tooltip: 'Edit Path',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        setState(() {
+                          _isPathEditing = true;
+                          _pathEditController.text = _currentPath;
+                        });
+                      },
                     ),
+                ],
+              ),
+            ),
+
+            // Search Bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: _onSearchChanged,
+                      decoration: InputDecoration(
+                        hintText: _isRecursiveSearch ? 'Search recursively...' : 'Search in current folder...',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.close_rounded),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  _onSearchChanged('');
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: theme.colorScheme.surfaceContainerHigh,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    isSelected: _isRecursiveSearch,
+                    icon: const Icon(Icons.travel_explore_rounded),
+                    selectedIcon: const Icon(Icons.travel_explore_rounded),
+                    tooltip: 'Recursive Search',
+                    onPressed: _toggleRecursiveSearch,
+                  ),
+                ],
+              ),
+            ),
+
+            // Category Chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      _isCategorySystemWide ? Icons.lan_rounded : Icons.folder_open_rounded,
+                      color: _isCategorySystemWide ? theme.colorScheme.primary : Colors.grey,
+                      size: 20,
+                    ),
+                    tooltip: _isCategorySystemWide ? 'Scope: System Wide' : 'Scope: Current Folder',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      setState(() {
+                        _isCategorySystemWide = !_isCategorySystemWide;
+                      });
+                      _refreshFiles();
+                    },
+                  ),
+                  const SizedBox(width: 4),
+                  const SizedBox(
+                    height: 24,
+                    child: VerticalDivider(width: 1, thickness: 1),
+                  ),
+                  const SizedBox(width: 8),
+                  _buildCategoryChip(
+                    FileCategory.all,
+                    'All',
+                    Icons.all_inclusive_rounded,
+                    Colors.grey,
+                    theme,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildCategoryChip(
+                    FileCategory.image,
+                    'Images',
+                    Icons.image_rounded,
+                    Colors.blue,
+                    theme,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildCategoryChip(
+                    FileCategory.video,
+                    'Videos',
+                    Icons.movie_creation_rounded,
+                    Colors.deepOrange,
+                    theme,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildCategoryChip(
+                    FileCategory.audio,
+                    'Audio',
+                    Icons.music_note_rounded,
+                    Colors.purple,
+                    theme,
+                  ),
+                  const SizedBox(width: 8),
+                  _buildCategoryChip(
+                    FileCategory.document,
+                    'Documents',
+                    Icons.description_rounded,
+                    Colors.green,
+                    theme,
                   ),
                 ],
               ),
@@ -927,108 +1635,125 @@ class _FileManagerScreenState extends State<FileManagerScreen> {
 
             // File List
             Expanded(
-              child: _files.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.folder_open_outlined,
-                            size: 64,
-                            color: theme.colorScheme.outline.withAlpha(100),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'This folder is empty.',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
-                      ),
+              child: (_isSearchingProgress && _filteredFiles.isEmpty)
+                  ? const Center(
+                      child: CircularProgressIndicator(),
                     )
-                  : ListView.builder(
-                      itemCount: _files.length,
-                      itemBuilder: (context, index) {
-                        final file = _files[index];
-                        final isHighlighted =
-                            _highlightedFile != null &&
-                            _highlightedFile == file.path;
-                        final isSelected = _selectedFiles.contains(file);
-
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          color: isSelected
-                              ? theme.colorScheme.primary.withAlpha(25)
-                              : isHighlighted
-                                  ? theme.colorScheme.primary.withAlpha(40)
-                                  : Colors.transparent,
-                          child: ListTile(
-                            selected: isSelected,
-                            onTap: () {
-                              if (_isSelectionMode) {
-                                setState(() {
-                                  if (isSelected) {
-                                    _selectedFiles.remove(file);
-                                  } else {
-                                    _selectedFiles.add(file);
-                                  }
-                                });
-                              } else {
-                                _openFile(file);
-                              }
-                            },
-                            onLongPress: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                if (isSelected) {
-                                  _selectedFiles.remove(file);
-                                } else {
-                                  _selectedFiles.add(file);
-                                }
-                              });
-                            },
-                            leading: _isSelectionMode
-                                ? Checkbox(
-                                    value: isSelected,
-                                    onChanged: (val) {
-                                      setState(() {
-                                        if (val == true) {
-                                          _selectedFiles.add(file);
-                                        } else {
-                                          _selectedFiles.remove(file);
-                                        }
-                                      });
-                                    },
-                                  )
-                                : Icon(
-                                    _getFileIcon(file),
-                                    color: _getIconColor(file, theme),
-                                    size: 28,
-                                  ),
-                            title: Text(
-                              file.name,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              file.isDirectory
-                                  ? 'Klasör'
-                                  : '${file.sizeFormatted} • ${file.dateFormatted}',
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: _isSelectionMode
-                                ? null
-                                : IconButton(
-                                    icon: const Icon(Icons.more_vert_rounded),
-                                    onPressed: () => _showFileActions(file),
-                                  ),
+                  : _filteredFiles.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.folder_open_outlined,
+                                size: 64,
+                                color: theme.colorScheme.outline.withAlpha(100),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _searchQuery.isNotEmpty
+                                    ? 'No files match your search.'
+                                    : 'This folder is empty.',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                        )
+                      : Stack(
+                          children: [
+                            ListView.builder(
+                              itemCount: _filteredFiles.length,
+                              itemBuilder: (context, index) {
+                                final file = _filteredFiles[index];
+                                final isHighlighted =
+                                    _highlightedFile != null &&
+                                    _highlightedFile == file.path;
+                                final isSelected = _selectedFiles.contains(file);
+
+                                return AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  color: isSelected
+                                      ? theme.colorScheme.primary.withAlpha(25)
+                                      : isHighlighted
+                                          ? theme.colorScheme.primary.withAlpha(40)
+                                          : Colors.transparent,
+                                  child: ListTile(
+                                    selected: isSelected,
+                                    onTap: () {
+                                      if (file.isDirectory) {
+                                        _navigateInto(file.path);
+                                      } else {
+                                        if (widget.isPickerMode || _isSelectionMode) {
+                                          setState(() {
+                                            if (isSelected) {
+                                              _selectedFiles.remove(file);
+                                            } else {
+                                              _selectedFiles.add(file);
+                                            }
+                                          });
+                                        } else {
+                                          _openFile(file);
+                                        }
+                                      }
+                                    },
+                                    onLongPress: file.isDirectory
+                                        ? null
+                                        : () {
+                                            HapticFeedback.mediumImpact();
+                                            setState(() {
+                                              if (isSelected) {
+                                                _selectedFiles.remove(file);
+                                              } else {
+                                                _selectedFiles.add(file);
+                                              }
+                                            });
+                                          },
+                                    leading: _buildFileLeading(file, theme),
+                                    title: Text(
+                                      file.name,
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Text(
+                                      file.isDirectory
+                                          ? 'Klasör'
+                                          : '${file.sizeFormatted} • ${file.dateFormatted}',
+                                      style: const TextStyle(fontSize: 11),
+                                    ),
+                                    trailing: (widget.isPickerMode || _isSelectionMode)
+                                        ? Checkbox(
+                                            value: isSelected,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                if (val == true) {
+                                                  _selectedFiles.add(file);
+                                                } else {
+                                                  _selectedFiles.remove(file);
+                                                }
+                                              });
+                                            },
+                                          )
+                                        : IconButton(
+                                            icon: const Icon(Icons.more_vert_rounded),
+                                            onPressed: () => _showFileActions(file),
+                                          ),
+                                  ),
+                                );
+                              },
+                            ),
+                            if (_isSearchingProgress)
+                              const Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: LinearProgressIndicator(),
+                              ),
+                          ],
+                        ),
             ),
           ],
         ),

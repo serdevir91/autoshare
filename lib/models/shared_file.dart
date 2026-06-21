@@ -48,4 +48,14 @@ class SharedFile {
   String get dateFormatted {
     return DateFormat('dd.MM.yyyy HH:mm').format(dateModified);
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SharedFile &&
+          runtimeType == other.runtimeType &&
+          path == other.path;
+
+  @override
+  int get hashCode => path.hashCode;
 }

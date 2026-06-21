@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path/path.dart' as p;
 import 'screens/dashboard_screen.dart';
 import 'screens/file_manager_screen.dart';
 import 'services/discovery_service.dart';
@@ -29,8 +30,56 @@ ThemeMode _parseThemeMode(String modeStr) {
   }
 }
 
-void main() async {
+Future<void> _registerWindowsSendToShortcut() async {
+  if (!Platform.isWindows) return;
+  try {
+    final appData = Platform.environment['APPDATA'];
+    if (appData == null) return;
+
+    final sendToDir = Directory(p.join(appData, 'Microsoft', 'Windows', 'SendTo'));
+    if (!sendToDir.existsSync()) return;
+
+    final shortcutFile = File(p.join(sendToDir.path, 'AutoShare.lnk'));
+
+    final exePath = Platform.resolvedExecutable;
+    // Don't create shortcut if running in debug mode/testing
+    if (exePath.contains('flutter_tools') || exePath.contains('dart.exe')) {
+      return;
+    }
+
+    final psCommand =
+        '\$WshShell = New-Object -ComObject WScript.Shell; '
+        '\$Shortcut = \$WshShell.CreateShortcut(\'${shortcutFile.path}\'); '
+        '\$Shortcut.TargetPath = \'$exePath\'; '
+        '\$Shortcut.Save();';
+
+    await Process.run('powershell', ['-Command', psCommand]);
+    debugPrint('Windows SendTo shortcut created/updated.');
+  } catch (e) {
+    debugPrint('Error creating Windows SendTo shortcut: $e');
+  }
+}
+
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Register Windows SendTo shortcut
+  if (Platform.isWindows) {
+    unawaited(_registerWindowsSendToShortcut());
+  }
+
+  // Parse files shared via command line arguments
+  final List<File> initialFiles = [];
+  if (Platform.isWindows) {
+    for (final arg in args) {
+      final file = File(arg);
+      try {
+        if (file.existsSync()) {
+          initialFiles.add(file);
+        }
+      } catch (_) {}
+    }
+  }
 
   // Initialize storage first
   final storageService = StorageService();
@@ -57,6 +106,7 @@ void main() async {
       discoveryService: discoveryService,
       transferService: transferService,
       notificationService: notificationService,
+      initialFiles: initialFiles,
     ),
   );
 }
@@ -66,6 +116,7 @@ class AutoShareApp extends StatefulWidget {
   final DiscoveryService discoveryService;
   final TransferService transferService;
   final NotificationService notificationService;
+  final List<File> initialFiles;
 
   const AutoShareApp({
     super.key,
@@ -73,6 +124,7 @@ class AutoShareApp extends StatefulWidget {
     required this.discoveryService,
     required this.transferService,
     required this.notificationService,
+    this.initialFiles = const [],
   });
 
   @override
@@ -198,6 +250,7 @@ class _AutoShareAppState extends State<AutoShareApp> {
         storageService: widget.storageService,
         discoveryService: widget.discoveryService,
         transferService: widget.transferService,
+        initialFiles: widget.initialFiles,
       ),
     );
   }

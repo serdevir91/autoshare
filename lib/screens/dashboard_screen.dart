@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../models/device_node.dart';
 import '../services/age_signals_service.dart';
 import '../services/discovery_service.dart';
@@ -16,12 +16,14 @@ class DashboardScreen extends StatefulWidget {
   final StorageService storageService;
   final DiscoveryService discoveryService;
   final TransferService transferService;
+  final List<File> initialFiles;
 
   const DashboardScreen({
     super.key,
     required this.storageService,
     required this.discoveryService,
     required this.transferService,
+    this.initialFiles = const [],
   });
 
   @override
@@ -31,6 +33,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   late StreamSubscription<PairRequestEvent> _pairSubscription;
   late StreamSubscription<TransferStatus> _transferSubscription;
+  StreamSubscription? _intentSub;
   bool _isRefreshingPairedDevices = false;
   bool _showWindowsBanner = true;
 
@@ -69,13 +72,176 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _showTransferProgressDialog(status);
       }
     });
+
+    // Listen to sharing intents (Android)
+    if (Platform.isAndroid) {
+      _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen((value) {
+        if (value.isNotEmpty) {
+          _handleSharedFiles(value);
+        }
+      }, onError: (err) {
+        debugPrint("getMediaStream error: $err");
+      });
+
+      ReceiveSharingIntent.instance.getInitialMedia().then((value) {
+        if (value.isNotEmpty) {
+          _handleSharedFiles(value);
+        }
+      });
+    }
+
+    // Handle initial files (Windows SendTo command line args)
+    if (widget.initialFiles.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showDeviceSelectDialogForSharedFiles(widget.initialFiles);
+      });
+    }
   }
 
   @override
   void dispose() {
     _pairSubscription.cancel();
     _transferSubscription.cancel();
+    _intentSub?.cancel();
     super.dispose();
+  }
+
+  void _handleSharedFiles(List<SharedMediaFile> sharedFiles) {
+    final files = sharedFiles
+        .map((f) => f.path.isNotEmpty ? File(f.path) : null)
+        .whereType<File>()
+        .toList();
+    if (files.isEmpty) return;
+
+    _showDeviceSelectDialogForSharedFiles(files);
+  }
+
+  void _showDeviceSelectDialogForSharedFiles(List<File> files) {
+    final paired = widget.storageService.getPairedDevices();
+    if (paired.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('No Paired Devices'),
+          content: const Text(
+            'You have not paired with any devices yet. Please pair with a device from the home screen first.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final discovered = widget.discoveryService.discoveredDevices;
+    final activePairedIds = discovered
+        .where((d) => d.isPaired)
+        .map((d) => d.id)
+        .toSet();
+
+    showModalBottomSheet<DeviceNode>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  'Send ${files.length} shared file(s) to:',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              ...paired.map((peer) {
+                final isOnline = activePairedIds.contains(peer.id);
+                final freshPeer = discovered.firstWhere(
+                  (d) => d.id == peer.id,
+                  orElse: () => peer,
+                );
+
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isOnline
+                        ? theme.colorScheme.primaryContainer
+                        : theme.colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      peer.type == 'pc' ? Icons.computer : Icons.phone_android,
+                      color: isOnline ? theme.colorScheme.primary : Colors.grey,
+                    ),
+                  ),
+                  title: Text(
+                    peer.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isOnline ? null : Colors.grey,
+                    ),
+                  ),
+                  subtitle: Text(
+                    isOnline ? 'Online (${freshPeer.ip})' : 'Offline',
+                    style: TextStyle(color: isOnline ? null : Colors.grey),
+                  ),
+                  trailing: isOnline
+                      ? const Icon(Icons.chevron_right_rounded)
+                      : null,
+                  enabled: isOnline,
+                  onTap: isOnline
+                      ? () => Navigator.pop(context, freshPeer)
+                      : null,
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    ).then((selectedDevice) {
+      if (selectedDevice != null) {
+        _sendFilesToDevice(selectedDevice, files);
+      }
+    });
+  }
+
+  Future<void> _sendFilesToDevice(DeviceNode target, List<File> files) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final batchResult = await widget.transferService.sendFiles(target, files);
+
+    if (mounted) {
+      if (batchResult.failCount == 0) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('All ${batchResult.successCount} files sent successfully to ${target.name}!'),
+          ),
+        );
+      } else if (batchResult.successCount == 0) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to send ${batchResult.failCount} files to ${target.name}.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      } else {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Sent ${batchResult.successCount} files. Failed to send ${batchResult.failCount} files to ${target.name}.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
   }
 
   void _showPairRequestDialog(PairRequestEvent event) {
@@ -186,18 +352,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _pickAndSendFile(DeviceNode device) async {
-    final result = await FilePicker.pickFiles(allowMultiple: true);
-    if (!mounted) return;
-    if (result == null || result.files.isEmpty) return;
+    final List<File>? selectedFiles = await Navigator.of(context).push<List<File>>(
+      MaterialPageRoute(
+        builder: (context) => FileManagerScreen(
+          storageService: widget.storageService,
+          discoveryService: widget.discoveryService,
+          transferService: widget.transferService,
+          isPickerMode: true,
+        ),
+      ),
+    );
 
-    final files = result.files
-        .map((f) => f.path != null ? File(f.path!) : null)
-        .whereType<File>()
-        .toList();
-    if (files.isEmpty) return;
+    if (!mounted) return;
+    if (selectedFiles == null || selectedFiles.isEmpty) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    final batchResult = await widget.transferService.sendFiles(device, files);
+    final batchResult = await widget.transferService.sendFiles(device, selectedFiles);
 
     if (mounted) {
       if (batchResult.failCount == 0) {
