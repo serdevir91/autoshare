@@ -16,36 +16,23 @@ Write-Host "Detected version $versionName from pubspec.yaml"
 
 flutter build windows --release
 
+$issTemplatePath = "windows\installer.iss"
 $issPath = "build\windows\x64\runner\Release\installer.iss"
-if (-not (Test-Path $issPath)) {
-  throw "installer.iss not found at $issPath"
+
+if (Test-Path $issTemplatePath) {
+  $releaseDir = Split-Path -Path $issPath -Parent
+  if (-not (Test-Path $releaseDir)) {
+    New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+  }
+  Copy-Item -Path $issTemplatePath -Destination $issPath -Force
+  Write-Host "Copied installer.iss template to $issPath"
+} elseif (-not (Test-Path $issPath)) {
+  throw "installer.iss not found at template path $issTemplatePath or release path $issPath"
 }
 
 $content = Get-Content -Raw $issPath
-$content = $content -replace "AppVersion=[0-9\.]+", "AppVersion=$versionName"
-$content = $content -replace "OutputBaseFilename=AutoShare-Setup-[0-9\.]+", "OutputBaseFilename=windows-setup-AutoShare"
-if ($content -notmatch "CloseApplications=") {
-  $content = $content -replace "PrivilegesRequired=admin", "PrivilegesRequired=admin`r`nCloseApplications=force"
-}
-$content = $content -replace [regex]::Escape("// Add firewall rules for AutoShare`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare UDP"" dir=in action=allow protocol=UDP localport=53842', '', SW_HIDE, ewNoWait, ResultCode);`r`n    Exec('netsh', 'advfirewall firewall add rule name=""AutoShare TCP"" dir=in action=allow protocol=TCP localport=53843', '', SW_HIDE, ewNoWait, ResultCode);"), @"
-// Replace existing rules to avoid duplicates
-    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare TCP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    // Add safer inbound rules scoped to any network profile (critical for public/hotspot networks) and this executable only
-    Exec('netsh', 'advfirewall firewall add rule name="AutoShare UDP" dir=in action=allow profile=any program="{app}\autoshare.exe" protocol=UDP localport=53842', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec('netsh', 'advfirewall firewall add rule name="AutoShare TCP" dir=in action=allow profile=any program="{app}\autoshare.exe" protocol=TCP localport=53843', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  end;
-end;
-
-procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
-var
-  ResultCode: Integer;
-begin
-  if CurUninstallStep = usPostUninstall then
-  begin
-    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare UDP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec('netsh', 'advfirewall firewall delete rule name="AutoShare TCP"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-"@
+$content = $content -replace "AppVersion=[0-9\.\+]+", "AppVersion=$versionName"
+$content = $content -replace "OutputBaseFilename=\S+", "OutputBaseFilename=windows-setup-AutoShare"
 
 Set-Content -Path $issPath -Value $content -NoNewline
 

@@ -62,6 +62,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  msix: ^3.18.0
 
 dependency_overrides:
   flutter_local_notifications_windows:
@@ -89,3 +90,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+msix_config:
+  display_name: AutoShare
+  publisher_display_name: Soner Erdevir
+  logo_path: assets/icon.png
+  capabilities: internetClient, privateNetworkClientServer
