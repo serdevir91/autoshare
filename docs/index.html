@@ -293,6 +293,21 @@
       transform: translateY(-2px);
     }
 
+    .btn-msstore {
+      background: linear-gradient(135deg, #0078d4, #005a9e);
+      color: #ffffff;
+      box-shadow: 0 4px 20px rgba(0, 120, 212, 0.35);
+      margin-bottom: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-msstore:hover {
+      background: linear-gradient(135deg, #1084d8, #0066b3);
+      box-shadow: 0 6px 26px rgba(0, 120, 212, 0.5);
+      transform: translateY(-2px);
+    }
+
+    .windows-options,
     .android-options {
       width: 100%;
       display: flex;
@@ -537,14 +552,22 @@
             </svg>
           </div>
           <h2>Windows</h2>
-          <p class="card-desc">Download the standalone installer for Windows 10/11 x64 computers.</p>
+          <p class="card-desc">Download on the Microsoft Store or install the standalone setup for Windows 10/11.</p>
         </div>
-        <a id="windows-download" href="https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-          </svg>
-          Download Installer (.exe) - <span id="windows-version">v1.0.10</span>
-        </a>
+        <div class="windows-options">
+          <a href="https://apps.microsoft.com/detail/9PGM24F50VR8" target="_blank" class="btn btn-msstore">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 3.449L9.75 2.1v9.45H0V3.449zM0 12.45h9.75v9.45L0 20.551v-8.1zM10.8 1.95L24 0v11.55H10.8V1.95zM10.8 12.45H24v11.55l-13.2-1.95v-9.6z"/>
+            </svg>
+            Get it from Microsoft Store
+          </a>
+          <a id="windows-download" href="https://github.com/serdevir91/autoshare/releases/latest/download/windows-setup-AutoShare.exe" class="btn btn-secondary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+            Download Installer (.exe) - <span id="windows-version">v1.0.10</span>
+          </a>
+        </div>
       </div>
 
       <!-- Android Card -->
